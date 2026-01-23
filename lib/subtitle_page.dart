@@ -74,14 +74,17 @@ class _SubtitlePageState extends State<SubtitlePage> {
 
       // Listen to stdout and stderr
       process.stdout.transform(SystemEncoding().decoder).listen((data) {
+        if (!mounted) return;
         setState(() => _terminalOutput += data);
       });
       process.stderr.transform(SystemEncoding().decoder).listen((data) {
+        if (!mounted) return;
         setState(() => _terminalOutput += data);
       });
 
       final exitCode = await process.exitCode;
 
+      if (!mounted) return;
       if (exitCode == 0) {
         // Assume SRT is generated in the same folder as the video or project output
         // Based on the user's command, let's look for the .srt file

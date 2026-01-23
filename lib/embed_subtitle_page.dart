@@ -79,14 +79,17 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
       );
 
       process.stdout.transform(SystemEncoding().decoder).listen((data) {
+        if (!mounted) return;
         setState(() => _terminalOutput += data);
       });
       process.stderr.transform(SystemEncoding().decoder).listen((data) {
+        if (!mounted) return;
         setState(() => _terminalOutput += data);
       });
 
       final exitCode = await process.exitCode;
 
+      if (!mounted) return;
       if (exitCode == 0) {
         setState(() {
           _status = '影片合成成功！\n儲存於: $outputPath';
@@ -99,6 +102,7 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _status = '錯誤: $e';
         _isProcessing = false;

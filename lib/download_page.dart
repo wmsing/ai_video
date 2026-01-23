@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
@@ -15,6 +18,7 @@ class DownloadPage extends StatefulWidget {
 
 class _DownloadPageState extends State<DownloadPage> {
   final TextEditingController _urlController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   bool _isDownloading = false;
   String _status = '';
   double _progress = 0;
@@ -23,7 +27,28 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   void dispose() {
     _urlController.dispose();
+    _nameController.dispose();
     super.dispose();
+  }
+
+  Future<Directory> _getAppDownloadDirectory(String subFolderName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPath = prefs.getString('main_folder_path');
+    
+    Directory baseDir;
+    if (savedPath != null) {
+      baseDir = Directory(savedPath);
+    } else {
+      // Fallback if not set
+      Directory? downloadsDir = await getDownloadsDirectory();
+      baseDir = Directory(p.join(downloadsDir?.path ?? '', 'AI_Video'));
+    }
+
+    final targetDir = Directory(p.join(baseDir.path, subFolderName));
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+    return targetDir;
   }
 
   Future<void> _openFolder() async {
@@ -90,25 +115,20 @@ class _DownloadPageState extends State<DownloadPage> {
       if (manifest.muxed.isNotEmpty) {
         final streamInfo = manifest.muxed.withHighestBitrate();
         
-        // Use Downloads directory on macOS
-        Directory? dir;
-        try {
-          if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-            dir = await getDownloadsDirectory();
-          }
-        } catch (e) {
-          debugPrint('Could not get downloads directory: $e');
-        }
-        dir ??= await getApplicationDocumentsDirectory();
+        // Use user-defined name or default to video title
+        final customName = _nameController.text.trim();
+        final folderName = customName.isNotEmpty 
+            ? customName 
+            : video.title.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
+            
+        Directory dir = await _getAppDownloadDirectory(folderName);
 
-        // Clean the title for filesystem safety
-        final safeTitle = video.title.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
-        final filePath = p.join(dir.path, '$safeTitle.mp4');
+        final filePath = p.join(dir.path, '$folderName.mp4');
 
         // 1. Check if file already exists
         if (await File(filePath).exists()) {
           setState(() {
-            _status = 'File already exists in Downloads:\n$filePath';
+            _status = '檔案已存在於 AI_Video 資料夾：\n$filePath';
             _lastDownloadPath = filePath;
             _progress = 1.0;
           });
@@ -150,46 +170,149 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Future<void> _downloadM3U8(String url) async {
-    setState(() => _status = 'M3U8 download started (simplified)...');
-    
+    setState(() {
+      _isDownloading = true;
+      _status = '正在解析 M3U8...';
+      _progress = 0;
+    });
+
     final dio = Dio();
-    Directory? dir;
     try {
-      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-        dir = await getDownloadsDirectory();
+      // 1. 獲取索引內容
+      var response = await dio.get(url);
+      var content = response.data.toString();
+      var baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+
+      // 2. 如果是 Master Playlist (包含不同解析度)，選擇最後一個 (通常是最高畫質)
+      if (content.contains('#EXT-X-STREAM-INF')) {
+        var lines = content.split('\n');
+        String? nextUrl;
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i].contains('#EXT-X-STREAM-INF')) {
+            nextUrl = lines[i + 1].trim();
+          }
+        }
+        if (nextUrl != null) {
+          if (!nextUrl.startsWith('http')) nextUrl = baseUrl + nextUrl;
+          return _downloadM3U8(nextUrl); // 遞歸下載真實的媒體列表
+        }
       }
-    } catch (e) {
-      debugPrint('Could not get downloads directory: $e');
-    }
-    dir ??= await getApplicationDocumentsDirectory();
 
-    final filePath = p.join(dir.path, 'downloaded_video.m3u8');
+      // 3. 提取所有片段 (TS 檔案)
+      var lines = content.split('\n');
+      var tsUrls = <String>[];
+      for (var line in lines) {
+        line = line.trim();
+        if (line.isNotEmpty && !line.startsWith('#')) {
+          if (line.startsWith('http')) {
+            tsUrls.add(line);
+          } else {
+            tsUrls.add(baseUrl + line);
+          }
+        }
+      }
 
-    // Check if file already exists
-    if (await File(filePath).exists()) {
-      setState(() {
-        _status = 'File already exists in Downloads:\n$filePath';
-        _lastDownloadPath = filePath;
-        _progress = 1.0;
-      });
-      await _openFolder();
-      return;
-    }
+      if (tsUrls.isEmpty) {
+        throw '未找到視頻片段';
+      }
 
-    // For simplicity, we just download the manifest file in this example.
-    await dio.download(url, filePath, onReceiveProgress: (received, total) {
-      if (total != -1) {
+      // 4. 準備下載目錄
+      final customName = _nameController.text.trim();
+      final urlHash = md5.convert(utf8.encode(url)).toString().substring(0, 8);
+      final folderName = customName.isNotEmpty ? customName : 'video_$urlHash';
+      
+      Directory dir = await _getAppDownloadDirectory(folderName);
+      
+      final tsFilePath = p.join(dir.path, '$folderName.ts');
+      final mp4FilePath = p.join(dir.path, '$folderName.mp4');
+      
+      // A. 檢查 MP4 是否已存在
+      if (await File(mp4FilePath).exists()) {
         setState(() {
-          _progress = received / total;
-          _status = 'Downloading manifest: ${(_progress * 100).toStringAsFixed(1)}%';
+          _status = 'MP4 已存在：\n$mp4FilePath';
+          _lastDownloadPath = mp4FilePath;
+          _progress = 1.0;
+        });
+        await _openFolder();
+        return;
+      }
+
+      // B. 檢查 TS 是否已存在 (若存在則直接進行轉碼，不重新下載)
+      if (await File(tsFilePath).exists()) {
+        setState(() => _status = '找到現有的 TS 檔案，正在直接轉換為 MP4...');
+        await _convertToMp4(tsFilePath, mp4FilePath);
+        return;
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final tempDir = await Directory(p.join(dir.path, 'temp_$timestamp')).create();
+      setState(() => _status = '準備下載 ${tsUrls.length} 個片段...');
+
+      // 5. 併發下載所有片段
+      int completed = 0;
+      for (var i = 0; i < tsUrls.length; i++) {
+        final segmentPath = p.join(tempDir.path, 'seg_$i.ts');
+        await dio.download(tsUrls[i], segmentPath);
+        completed++;
+        setState(() {
+          _progress = completed / tsUrls.length;
+          _status = '正在下載片段: $completed / ${tsUrls.length}';
         });
       }
-    });
 
-    setState(() {
-      _status = 'Manifest downloaded to:\n$filePath';
-      _lastDownloadPath = filePath;
-    });
+      // 6. 合併檔案為臨時 TS
+      setState(() => _status = '正在合併片段...');
+      final tsFile = File(tsFilePath);
+      final sink = tsFile.openWrite(mode: FileMode.append);
+      
+      for (var i = 0; i < tsUrls.length; i++) {
+        final segmentFile = File(p.join(tempDir.path, 'seg_$i.ts'));
+        final bytes = await segmentFile.readAsBytes();
+        sink.add(bytes);
+        await segmentFile.delete();
+      }
+      await sink.flush();
+      await sink.close();
+      await tempDir.delete();
+
+      // 7. 使用 FFmpeg 轉換為 MP4
+      await _convertToMp4(tsFilePath, mp4FilePath);
+      
+      await _openFolder();
+
+    } catch (e) {
+      setState(() => _status = 'M3U8 下載失敗: $e');
+    } finally {
+      setState(() => _isDownloading = false);
+    }
+  }
+
+  Future<void> _convertToMp4(String tsFilePath, String mp4FilePath) async {
+    setState(() => _status = '正在轉碼為 MP4 (FFmpeg)...');
+    try {
+      final result = await Process.run('zsh', [
+        '-l',
+        '-c',
+        'ffmpeg -i "$tsFilePath" -c copy -y "$mp4FilePath"'
+      ]);
+
+      if (result.exitCode == 0) {
+        if (await File(tsFilePath).exists()) {
+          await File(tsFilePath).delete(); 
+        }
+        setState(() {
+          _status = '轉碼完成：\n$mp4FilePath';
+          _lastDownloadPath = mp4FilePath;
+          _progress = 1.0;
+        });
+      } else {
+        setState(() => _status = '轉碼失敗，保留原始 TS：\n$tsFilePath\n${result.stderr}');
+        _lastDownloadPath = tsFilePath;
+      }
+    } catch (e) {
+      setState(() => _status = '找不到 FFmpeg，保留原始 TS：\n$tsFilePath');
+      _lastDownloadPath = tsFilePath;
+    }
   }
 
   @override
@@ -198,17 +321,29 @@ class _DownloadPageState extends State<DownloadPage> {
       appBar: AppBar(title: const Text('下載')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _urlController,
-              decoration: const InputDecoration(
-                labelText: '輸入網址 (YouTube or M3U8)',
-                border: OutlineInputBorder(),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              TextField(
+                controller: _urlController,
+                decoration: const InputDecoration(
+                  labelText: '輸入網址 (YouTube or M3U8)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.link),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
+              const SizedBox(height: 16),
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: '輸入檔案名稱 (選填，將以此名稱創建資料夾)',
+                  hintText: '例如：我的影片_01',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.drive_file_rename_outline),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
@@ -234,9 +369,48 @@ class _DownloadPageState extends State<DownloadPage> {
               _status,
               textAlign: TextAlign.center,
             ),
+            const Divider(height: 48),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '如何找到 M3U8 網址(例如從愛壹凡/粵漫之家下載)？',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '1. 在瀏覽器打開視頻播放頁面\n'
+                    '2. 右鍵點擊網頁選擇「檢查 (Inspect)」或按 F12\n'
+                    '3. 在工具欄切換到「網路 (Network)」標籤\n'
+                    '4. 在過濾搜索框中輸入「m3u8」\n'
+                    '5. 刷新頁面，找到類型為「fetch」或「xhr」的 .m3u8 連結\n'
+                    '6. 右鍵點擊該連結並選擇「複製連結網址」',
+                    style: TextStyle(color: Colors.grey, height: 1.5),
+                  ),
+                  const Divider(height: 32),
+                  const Text(
+                    '可下載的網址列表：',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => launchUrl(Uri.parse('https://www.ymvid.com/hk')),
+                    child: const Text('1. 粵漫之家: https://www.ymvid.com/hk', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => launchUrl(Uri.parse('https://www.yfsp.tv/list')),
+                    child: const Text('2. 愛壹凡: https://www.yfsp.tv/list', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -224,11 +224,10 @@ class _SubtitlePageState extends State<SubtitlePage> {
                 ),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 40),
             OutlinedButton.icon(
               onPressed: _openProjectFolder,
-              icon: const Icon(Icons.folder),
-              label: const Text('打開工具所在文件夾'),
+              label: const Text('打開工具所在文件夾', style: TextStyle(color: Colors.grey),),
             ),
           ],
         ),

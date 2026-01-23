@@ -23,12 +23,32 @@ class _DownloadPageState extends State<DownloadPage> {
   String _status = '';
   double _progress = 0;
   String? _lastDownloadPath;
+  List<String> _downloadHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDownloadHistory();
+  }
 
   @override
   void dispose() {
     _urlController.dispose();
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDownloadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _downloadHistory = prefs.getStringList('download_history') ?? [];
+    });
+  }
+
+  Future<void> _addToDownloadHistory(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    _downloadHistory.add(path);
+    await prefs.setStringList('download_history', _downloadHistory);
   }
 
   Future<Directory> _getAppDownloadDirectory(String subFolderName) async {
@@ -157,6 +177,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
         await fileStream.flush();
         await fileStream.close();
+        await _addToDownloadHistory(filePath);
         setState(() {
           _status = 'Successfully downloaded to:\n$filePath';
           _lastDownloadPath = filePath;
@@ -300,6 +321,7 @@ class _DownloadPageState extends State<DownloadPage> {
         if (await File(tsFilePath).exists()) {
           await File(tsFilePath).delete(); 
         }
+        await _addToDownloadHistory(mp4FilePath);
         setState(() {
           _status = '轉碼完成：\n$mp4FilePath';
           _lastDownloadPath = mp4FilePath;
@@ -315,10 +337,86 @@ class _DownloadPageState extends State<DownloadPage> {
     }
   }
 
+  void _showDownloadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final mainFolderPath = prefs.getString('main_folder_path');
+    
+    if (mainFolderPath == null) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('下載列表'),
+          content: const Text('尚未設置主資料夾'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('關閉'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final mainDir = Directory(mainFolderPath);
+    List<Directory> subFolders = [];
+    
+    if (await mainDir.exists()) {
+      final entities = await mainDir.list().toList();
+      subFolders = entities.whereType<Directory>().toList();
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('下載列表'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: subFolders.isEmpty
+              ? const Center(child: Text('主資料夾內沒有子資料夾'))
+              : ListView.builder(
+                  itemCount: subFolders.length,
+                  itemBuilder: (context, index) {
+                    final folder = subFolders[index];
+                    final folderName = p.basename(folder.path);
+                    return ListTile(
+                      leading: const Icon(Icons.folder),
+                      title: Text(folderName),
+                      subtitle: Text(folder.path),
+                      onTap: () async {
+                        if (Platform.isMacOS) {
+                          await Process.run('open', [folder.path]);
+                        }
+                        Navigator.of(context).pop();
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('下載')),
+      appBar: AppBar(
+        title: const Text('下載'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list),
+            onPressed: _showDownloadHistory,
+            tooltip: '下載列表',
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
@@ -344,73 +442,73 @@ class _DownloadPageState extends State<DownloadPage> {
               ),
               const SizedBox(height: 16),
               Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: _isDownloading ? null : _handleDownload,
-                  child: const Text('Submit'),
-                ),
-                if (_lastDownloadPath != null)
-                  ElevatedButton.icon(
-                    onPressed: _openFolder,
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('打開資料夾'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (_isDownloading) ...[
-              LinearProgressIndicator(value: _progress),
-              const SizedBox(height: 8),
-            ],
-            SelectableText(
-              _status,
-              textAlign: TextAlign.center,
-            ),
-            const Divider(height: 48),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
                 children: [
-                  const Text(
-                    '如何找到 M3U8 網址(例如從愛壹凡/粵漫之家下載)？',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ElevatedButton(
+                    onPressed: _isDownloading ? null : _handleDownload,
+                    child: const Text('Submit'),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '1. 在瀏覽器打開視頻播放頁面\n'
-                    '2. 右鍵點擊網頁選擇「檢查 (Inspect)」或按 F12\n'
-                    '3. 在工具欄切換到「網路 (Network)」標籤\n'
-                    '4. 在過濾搜索框中輸入「m3u8」\n'
-                    '5. 刷新頁面，找到類型為「fetch」或「xhr」的 .m3u8 連結\n'
-                    '6. 右鍵點擊該連結並選擇「複製連結網址」',
-                    style: TextStyle(color: Colors.grey, height: 1.5),
-                  ),
-                  const Divider(height: 32),
-                  const Text(
-                    '可下載的網址列表：',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => launchUrl(Uri.parse('https://www.ymvid.com/hk')),
-                    child: const Text('1. 粵漫之家: https://www.ymvid.com/hk', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => launchUrl(Uri.parse('https://www.yfsp.tv/list')),
-                    child: const Text('2. 愛壹凡: https://www.yfsp.tv/list', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
-                  ),
+                  if (_lastDownloadPath != null)
+                    ElevatedButton.icon(
+                      onPressed: _openFolder,
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('打開資料夾'),
+                    ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              if (_isDownloading) ...[
+                LinearProgressIndicator(value: _progress),
+                const SizedBox(height: 8),
+              ],
+              SelectableText(
+                _status,
+                textAlign: TextAlign.center,
+              ),
+              const Divider(height: 48),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '如何找到 M3U8 網址(例如從愛壹凡/粵漫之家下載)？',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '1. 在瀏覽器打開視頻播放頁面\n'
+                      '2. 右鍵點擊網頁選擇「檢查 (Inspect)」或按 F12\n'
+                      '3. 在工具欄切換到「網路 (Network)」標籤\n'
+                      '4. 在過濾搜索框中輸入「m3u8」\n'
+                      '5. 刷新頁面，找到類型為「fetch」或「xhr」的 .m3u8 連結\n'
+                      '6. 右鍵點擊該連結並選擇「複製連結網址」',
+                      style: TextStyle(color: Colors.grey, height: 1.5),
+                    ),
+                    const Divider(height: 32),
+                    const Text(
+                      '可下載的網址列表：',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => launchUrl(Uri.parse('https://www.ymvid.com/hk')),
+                      child: const Text('1. 粵漫之家: https://www.ymvid.com/hk', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => launchUrl(Uri.parse('https://www.yfsp.tv/list')),
+                      child: const Text('2. 愛壹凡: https://www.yfsp.tv/list', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }

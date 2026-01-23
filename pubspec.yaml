@@ -39,6 +39,7 @@ dependencies:
   dio: ^5.9.0
   path: ^1.9.1
   dio_cache_interceptor: ^4.0.5
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

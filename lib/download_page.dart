@@ -4,6 +4,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
@@ -17,11 +18,25 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isDownloading = false;
   String _status = '';
   double _progress = 0;
+  String? _lastDownloadPath;
 
   @override
   void dispose() {
     _urlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openFolder() async {
+    if (_lastDownloadPath != null) {
+      final folderPath = p.dirname(_lastDownloadPath!);
+      final url = Uri.file(folderPath);
+      if (Platform.isMacOS) {
+        // More reliable for macOS sandboxed apps
+        await Process.run('open', [folderPath]);
+      } else if (await canLaunchUrl(url)) {
+        await launchUrl(url);
+      }
+    }
   }
 
   Future<void> _handleDownload() async {
@@ -32,6 +47,7 @@ class _DownloadPageState extends State<DownloadPage> {
       _isDownloading = true;
       _status = 'Analyzing link...';
       _progress = 0;
+      _lastDownloadPath = null;
     });
 
     try {
@@ -45,6 +61,7 @@ class _DownloadPageState extends State<DownloadPage> {
         });
       }
     } catch (e) {
+      print('Download error: $e');
       setState(() {
         _status = 'Error: $e';
       });
@@ -59,13 +76,46 @@ class _DownloadPageState extends State<DownloadPage> {
     final yt = YoutubeExplode();
     try {
       setState(() => _status = 'Fetching video info...');
-      final video = await yt.videos.get(url);
+      
+      // Explicitly parse the video ID to handle complex URLs
+      final videoId = VideoId.parseVideoId(url);
+      if (videoId == null) {
+        setState(() => _status = 'Invalid YouTube URL.');
+        return;
+      }
+
+      final video = await yt.videos.get(videoId);
       final manifest = await yt.videos.streamsClient.getManifest(video.id);
       
       if (manifest.muxed.isNotEmpty) {
         final streamInfo = manifest.muxed.withHighestBitrate();
-        final dir = await getApplicationDocumentsDirectory();
-        final filePath = p.join(dir.path, '${video.title.replaceAll(RegExp(r'[^\w\s]+'), '')}.mp4');
+        
+        // Use Downloads directory on macOS
+        Directory? dir;
+        try {
+          if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+            dir = await getDownloadsDirectory();
+          }
+        } catch (e) {
+          debugPrint('Could not get downloads directory: $e');
+        }
+        dir ??= await getApplicationDocumentsDirectory();
+
+        // Clean the title for filesystem safety
+        final safeTitle = video.title.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
+        final filePath = p.join(dir.path, '$safeTitle.mp4');
+
+        // 1. Check if file already exists
+        if (await File(filePath).exists()) {
+          setState(() {
+            _status = 'File already exists in Downloads:\n$filePath';
+            _lastDownloadPath = filePath;
+            _progress = 1.0;
+          });
+          // Automatically open folder since it exists
+          await _openFolder();
+          return;
+        }
         
         setState(() => _status = 'Downloading: ${video.title}');
         
@@ -87,9 +137,12 @@ class _DownloadPageState extends State<DownloadPage> {
 
         await fileStream.flush();
         await fileStream.close();
-        setState(() => _status = 'Downloaded to $filePath');
+        setState(() {
+          _status = 'Successfully downloaded to:\n$filePath';
+          _lastDownloadPath = filePath;
+        });
       } else {
-        setState(() => _status = 'No suitable stream found.');
+        setState(() => _status = 'No suitable stream found for this video.');
       }
     } finally {
       yt.close();
@@ -100,11 +153,30 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() => _status = 'M3U8 download started (simplified)...');
     
     final dio = Dio();
-    final dir = await getApplicationDocumentsDirectory();
+    Directory? dir;
+    try {
+      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        dir = await getDownloadsDirectory();
+      }
+    } catch (e) {
+      debugPrint('Could not get downloads directory: $e');
+    }
+    dir ??= await getApplicationDocumentsDirectory();
+
     final filePath = p.join(dir.path, 'downloaded_video.m3u8');
 
+    // Check if file already exists
+    if (await File(filePath).exists()) {
+      setState(() {
+        _status = 'File already exists in Downloads:\n$filePath';
+        _lastDownloadPath = filePath;
+        _progress = 1.0;
+      });
+      await _openFolder();
+      return;
+    }
+
     // For simplicity, we just download the manifest file in this example.
-    // Full m3u8 download requires parsing segments and downloading each.
     await dio.download(url, filePath, onReceiveProgress: (received, total) {
       if (total != -1) {
         setState(() {
@@ -114,7 +186,10 @@ class _DownloadPageState extends State<DownloadPage> {
       }
     });
 
-    setState(() => _status = 'Manifest downloaded. Full segment download not implemented in this demo.');
+    setState(() {
+      _status = 'Manifest downloaded to:\n$filePath';
+      _lastDownloadPath = filePath;
+    });
   }
 
   @override
@@ -128,21 +203,37 @@ class _DownloadPageState extends State<DownloadPage> {
             TextField(
               controller: _urlController,
               decoration: const InputDecoration(
-                labelText: 'Enter Link (YouTube or M3U8)',
+                labelText: '輸入網址 (YouTube or M3U8)',
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isDownloading ? null : _handleDownload,
-              child: const Text('Submit'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _isDownloading ? null : _handleDownload,
+                  child: const Text('Submit'),
+                ),
+                if (_lastDownloadPath != null)
+                  ElevatedButton.icon(
+                    onPressed: _openFolder,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('打開資料夾'),
+                  ),
+              ],
             ),
             const SizedBox(height: 24),
             if (_isDownloading) ...[
               LinearProgressIndicator(value: _progress),
               const SizedBox(height: 8),
             ],
-            Text(_status),
+            SelectableText(
+              _status,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

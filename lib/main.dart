@@ -6,6 +6,8 @@ import 'dart:io';
 import 'download_page.dart';
 import 'subtitle_page.dart';
 import 'embed_subtitle_page.dart';
+import 'story_video_page.dart';
+import 'golden_quotes_cut_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,29 +38,37 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   String? _mainFolderPath;
+  String? _aiToolsPath;
 
   @override
   void initState() {
     super.initState();
-    _loadMainFolder();
+    _loadSettings();
   }
 
-  Future<void> _loadMainFolder() async {
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _mainFolderPath = prefs.getString('main_folder_path');
+      _aiToolsPath = prefs.getString('ai_tools_path');
     });
   }
 
   Future<void> _selectMainFolder() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-
     if (selectedDirectory != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('main_folder_path', selectedDirectory);
-      setState(() {
-        _mainFolderPath = selectedDirectory;
-      });
+      setState(() => _mainFolderPath = selectedDirectory);
+    }
+  }
+
+  Future<void> _selectAiToolsFolder() async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ai_tools_path', selectedDirectory);
+      setState(() => _aiToolsPath = selectedDirectory);
     }
   }
 
@@ -83,6 +93,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     final isFolderSet = _mainFolderPath != null;
+    final isToolsSet = _aiToolsPath != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -100,37 +111,31 @@ class _MyHomePageState extends State<MyHomePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Top Location Display
+            // 1. Download Location display
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               color: isFolderSet ? Colors.green.shade50 : Colors.red.shade50,
-              child: Column(
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        isFolderSet ? Icons.check_circle : Icons.warning,
-                        color: isFolderSet ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          isFolderSet 
-                            ? '主資料夾已設置：\n$_mainFolderPath' 
-                            : '尚未設置主資料夾，請先選擇存放位置',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isFolderSet ? Colors.green.shade900 : Colors.red.shade900,
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: _selectMainFolder,
-                        child: Text(isFolderSet ? '更改' : '設置'),
-                      ),
-                    ],
-                  ),
+                  Icon(isFolderSet ? Icons.check_circle : Icons.warning, color: isFolderSet ? Colors.green : Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(isFolderSet ? '下載路徑：$_mainFolderPath' : '請設置下載資料夾')),
+                  TextButton(onPressed: _selectMainFolder, child: Text(isFolderSet ? '更改' : '設置')),
+                ],
+              ),
+            ),
+            // 2. AI Tools Path display
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: isToolsSet ? Colors.blue.shade50 : Colors.orange.shade50,
+              child: Row(
+                children: [
+                  Icon(isToolsSet ? Icons.settings_suggest : Icons.error_outline, color: isToolsSet ? Colors.blue : Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(isToolsSet ? 'AI工具路徑 (tt_video)：$_aiToolsPath' : '請設置 tt_video 工具夾路徑')),
+                  TextButton(onPressed: _selectAiToolsFolder, child: Text(isToolsSet ? '更改' : '設置')),
                 ],
               ),
             ),
@@ -140,22 +145,9 @@ class _MyHomePageState extends State<MyHomePage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  if (isFolderSet) ...[
-                    ElevatedButton.icon(
-                      onPressed: _openMainFolder,
-                      icon: const Icon(Icons.folder_special),
-                      label: const Text('打開主資料夾'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade100,
-                        minimumSize: const Size(250, 50),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
-                  
                   // Action Buttons
                   Opacity(
-                    opacity: isFolderSet ? 1.0 : 0.5,
+                    opacity: (isFolderSet && isToolsSet) ? 1.0 : 0.5,
                     child: Column(
                       children: [
                         ElevatedButton(
@@ -165,27 +157,53 @@ class _MyHomePageState extends State<MyHomePage> {
                             );
                           } : null,
                           style: ElevatedButton.styleFrom(minimumSize: const Size(200, 45)),
-                          child: const Text('下載影片'),
+                          child: const Text('下載影片 (YouTube/M3U8)'),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
-                          onPressed: isFolderSet ? () {
+                          onPressed: (isFolderSet && isToolsSet) ? () {
                             Navigator.of(context).push(
                               MaterialPageRoute(builder: (context) => const SubtitlePage()),
                             );
                           } : null,
                           style: ElevatedButton.styleFrom(minimumSize: const Size(200, 45)),
-                          child: const Text('提取字幕 (SRT)'),
+                          child: const Text('提取字幕 (Whisper AI)'),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
-                          onPressed: isFolderSet ? () {
+                          onPressed: (isFolderSet && isToolsSet) ? () {
                             Navigator.of(context).push(
                               MaterialPageRoute(builder: (context) => const EmbedSubtitlePage()),
                             );
                           } : null,
                           style: ElevatedButton.styleFrom(minimumSize: const Size(200, 45)),
                           child: const Text('加字幕入影片'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: (isFolderSet && isToolsSet) ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const StoryVideoPage()),
+                            );
+                          } : null,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(200, 45),
+                            backgroundColor: Colors.orange.shade100,
+                          ),
+                          child: const Text('劇情影片 (Summary)'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: (isFolderSet && isToolsSet) ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const GoldenQuotesCutPage()),
+                            );
+                          } : null,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(200, 45),
+                            backgroundColor: Colors.amber.shade100,
+                          ),
+                          child: const Text('金句CUT'),
                         ),
                       ],
                     ),

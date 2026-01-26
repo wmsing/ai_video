@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EmbedSubtitlePage extends StatefulWidget {
   const EmbedSubtitlePage({super.key});
@@ -17,12 +18,27 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
   bool _isProcessing = false;
   String _status = '';
   String _terminalOutput = '';
+  String? _projectRoot;
+  String? _mainFolderPath;
 
-  final String _projectRoot = '/Users/wmsing/Documents/tony/github/text_to_video/tt_video';
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _projectRoot = prefs.getString('ai_tools_path');
+      _mainFolderPath = prefs.getString('main_folder_path');
+    });
+  }
 
   Future<void> _pickVideo() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.video,
+      initialDirectory: _mainFolderPath,
     );
 
     if (result != null && result.files.single.path != null) {
@@ -37,6 +53,7 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['srt'],
+      initialDirectory: _mainFolderPath,
     );
 
     if (result != null && result.files.single.path != null) {
@@ -48,8 +65,8 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
   }
 
   Future<void> _embedSubtitles() async {
-    if (_selectedVideoPath == null || _selectedSrtPath == null) {
-      setState(() => _status = '請選擇影片與字幕檔案');
+    if (_selectedVideoPath == null || _selectedSrtPath == null || _projectRoot == null) {
+      setState(() => _status = _projectRoot == null ? '請先在主頁設置工具路徑' : '請選擇影片與字幕檔案');
       return;
     }
 
@@ -60,21 +77,46 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
     });
 
     try {
-      final venvPython = '$_projectRoot/.venv/bin/python';
+      String? venvPython;
+      final possibleVenvPaths = [
+        p.join(_projectRoot!, '.venv', 'bin', 'python'),
+        p.join(_projectRoot!, 'venv', 'bin', 'python'),
+      ];
+
+      for (var path in possibleVenvPaths) {
+        if (await File(path).exists()) {
+          venvPython = path;
+          break;
+        }
+      }
       
+      // Verification
+      setState(() {
+        _terminalOutput += "檢查路徑...\n";
+        _terminalOutput += "工具目錄: $_projectRoot\n";
+        _terminalOutput += "Python路徑: ${venvPython ?? "未找到"}\n";
+      });
+
+      if (!await Directory(_projectRoot!).exists()) {
+        throw "工具目錄不存在：$_projectRoot";
+      }
+      if (venvPython == null) {
+        throw "找不到 Python 環境 (.venv 或 venv)，請確保已在大模型工具目錄內執行安裝步驟。";
+      }
+
       // Construct output path: same folder as video, with _final suffix
       final String dirName = p.dirname(_selectedVideoPath!);
       final String baseName = p.basenameWithoutExtension(_selectedVideoPath!);
       final String outputPath = p.join(dirName, '${baseName}_final.mp4');
 
-      final command = '$venvPython tools/index2.py -v "$_selectedVideoPath" -s "$_selectedSrtPath" -o "$outputPath"';
+      final command = '"$venvPython" tools/index2.py -v "$_selectedVideoPath" -s "$_selectedSrtPath" -o "$outputPath"';
       
       final process = await Process.start(
         'zsh',
         [
           '-l',
           '-c',
-          'cd $_projectRoot && $command'
+          'cd "$_projectRoot" && $command'
         ],
       );
 
@@ -184,6 +226,11 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
                 icon: const Icon(Icons.folder),
                 label: const Text('打開檔案所在資料夾'),
               ),
+            const SizedBox(height: 10),
+            Text('工具路徑: ${_projectRoot ?? "尚未設置"}', 
+              textAlign: TextAlign.center, 
+              style: const TextStyle(fontSize: 10, color: Colors.grey)
+            ),
           ],
         ),
       ),

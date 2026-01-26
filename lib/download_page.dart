@@ -101,31 +101,35 @@ class _DownloadPageState extends State<DownloadPage> {
       } else if (url.contains('.m3u8')) {
         await _downloadM3U8(url);
       } else {
+        if (!mounted) return;
         setState(() {
           _status = 'Unsupported link format.';
         });
       }
     } catch (e) {
       print('Download error: $e');
+      if (!mounted) return;
       setState(() {
         _status = 'Error: $e';
       });
     } finally {
-      setState(() {
-        _isDownloading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+        });
+      }
     }
   }
 
   Future<void> _downloadYouTube(String url) async {
     final yt = YoutubeExplode();
     try {
-      setState(() => _status = 'Fetching video info...');
+      if (mounted) setState(() => _status = 'Fetching video info...');
       
       // Explicitly parse the video ID to handle complex URLs
       final videoId = VideoId.parseVideoId(url);
       if (videoId == null) {
-        setState(() => _status = 'Invalid YouTube URL.');
+        if (mounted) setState(() => _status = 'Invalid YouTube URL.');
         return;
       }
 
@@ -147,17 +151,19 @@ class _DownloadPageState extends State<DownloadPage> {
 
         // 1. Check if file already exists
         if (await File(filePath).exists()) {
-          setState(() {
-            _status = '檔案已存在於 AI_Video 資料夾：\n$filePath';
-            _lastDownloadPath = filePath;
-            _progress = 1.0;
-          });
+          if (mounted) {
+            setState(() {
+              _status = '檔案已存在於 AI_Video 資料夾：\n$filePath';
+              _lastDownloadPath = filePath;
+              _progress = 1.0;
+            });
+          }
           // Automatically open folder since it exists
           await _openFolder();
           return;
         }
         
-        setState(() => _status = 'Downloading: ${video.title}');
+        if (mounted) setState(() => _status = 'Downloading: ${video.title}');
         
         final file = File(filePath);
         final stream = yt.videos.streamsClient.get(streamInfo);
@@ -169,33 +175,42 @@ class _DownloadPageState extends State<DownloadPage> {
         await for (final data in stream) {
           fileStream.add(data);
           downloaded += data.length;
-          setState(() {
-            _progress = downloaded / totalSize;
-            _status = 'Downloading: ${(_progress * 100).toStringAsFixed(1)}%';
-          });
+          if (mounted) {
+            setState(() {
+              _progress = downloaded / totalSize;
+              _status = 'Downloading: ${(_progress * 100).toStringAsFixed(1)}%';
+            });
+          }
         }
 
         await fileStream.flush();
         await fileStream.close();
         await _addToDownloadHistory(filePath);
-        setState(() {
-          _status = 'Successfully downloaded to:\n$filePath';
-          _lastDownloadPath = filePath;
-        });
+        if (mounted) {
+          setState(() {
+            _status = 'Successfully downloaded to:\n$filePath';
+            _lastDownloadPath = filePath;
+          });
+        }
       } else {
-        setState(() => _status = 'No suitable stream found for this video.');
+        if (mounted) setState(() => _status = 'No suitable stream found for this video.');
       }
+    } catch (e) {
+      if (mounted) setState(() => _status = 'YouTube 下載錯誤: $e');
+      rethrow;
     } finally {
       yt.close();
     }
   }
 
   Future<void> _downloadM3U8(String url) async {
-    setState(() {
-      _isDownloading = true;
-      _status = '正在解析 M3U8...';
-      _progress = 0;
-    });
+    if (mounted) {
+      setState(() {
+        _isDownloading = true;
+        _status = '正在解析 M3U8...';
+        _progress = 0;
+      });
+    }
 
     final dio = Dio();
     try {
@@ -249,25 +264,27 @@ class _DownloadPageState extends State<DownloadPage> {
       
       // A. 檢查 MP4 是否已存在
       if (await File(mp4FilePath).exists()) {
-        setState(() {
-          _status = 'MP4 已存在：\n$mp4FilePath';
-          _lastDownloadPath = mp4FilePath;
-          _progress = 1.0;
-        });
+        if (mounted) {
+          setState(() {
+            _status = 'MP4 已存在：\n$mp4FilePath';
+            _lastDownloadPath = mp4FilePath;
+            _progress = 1.0;
+          });
+        }
         await _openFolder();
         return;
       }
 
       // B. 檢查 TS 是否已存在 (若存在則直接進行轉碼，不重新下載)
       if (await File(tsFilePath).exists()) {
-        setState(() => _status = '找到現有的 TS 檔案，正在直接轉換為 MP4...');
+        if (mounted) setState(() => _status = '找到現有的 TS 檔案，正在直接轉換為 MP4...');
         await _convertToMp4(tsFilePath, mp4FilePath);
         return;
       }
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final tempDir = await Directory(p.join(dir.path, 'temp_$timestamp')).create();
-      setState(() => _status = '準備下載 ${tsUrls.length} 個片段...');
+      if (mounted) setState(() => _status = '準備下載 ${tsUrls.length} 個片段...');
 
       // 5. 併發下載所有片段
       int completed = 0;
@@ -275,14 +292,16 @@ class _DownloadPageState extends State<DownloadPage> {
         final segmentPath = p.join(tempDir.path, 'seg_$i.ts');
         await dio.download(tsUrls[i], segmentPath);
         completed++;
-        setState(() {
-          _progress = completed / tsUrls.length;
-          _status = '正在下載片段: $completed / ${tsUrls.length}';
-        });
+        if (mounted) {
+          setState(() {
+            _progress = completed / tsUrls.length;
+            _status = '正在下載片段: $completed / ${tsUrls.length}';
+          });
+        }
       }
 
       // 6. 合併檔案為臨時 TS
-      setState(() => _status = '正在合併片段...');
+      if (mounted) setState(() => _status = '正在合併片段...');
       final tsFile = File(tsFilePath);
       final sink = tsFile.openWrite(mode: FileMode.append);
       
@@ -302,14 +321,15 @@ class _DownloadPageState extends State<DownloadPage> {
       await _openFolder();
 
     } catch (e) {
-      setState(() => _status = 'M3U8 下載失敗: $e');
+      if (mounted) setState(() => _status = 'M3U8 下載失敗: $e');
+      rethrow;
     } finally {
-      setState(() => _isDownloading = false);
+      if (mounted) setState(() => _isDownloading = false);
     }
   }
 
   Future<void> _convertToMp4(String tsFilePath, String mp4FilePath) async {
-    setState(() => _status = '正在轉碼為 MP4 (FFmpeg)...');
+    if (mounted) setState(() => _status = '正在轉碼為 MP4 (FFmpeg)...');
     try {
       final result = await Process.run('zsh', [
         '-l',
@@ -322,18 +342,24 @@ class _DownloadPageState extends State<DownloadPage> {
           await File(tsFilePath).delete(); 
         }
         await _addToDownloadHistory(mp4FilePath);
-        setState(() {
-          _status = '轉碼完成：\n$mp4FilePath';
-          _lastDownloadPath = mp4FilePath;
-          _progress = 1.0;
-        });
+        if (mounted) {
+          setState(() {
+            _status = '轉碼完成：\n$mp4FilePath';
+            _lastDownloadPath = mp4FilePath;
+            _progress = 1.0;
+          });
+        }
       } else {
-        setState(() => _status = '轉碼失敗，保留原始 TS：\n$tsFilePath\n${result.stderr}');
-        _lastDownloadPath = tsFilePath;
+        if (mounted) {
+          setState(() => _status = '轉碼失敗，保留原始 TS：\n$tsFilePath\n${result.stderr}');
+          _lastDownloadPath = tsFilePath;
+        }
       }
     } catch (e) {
-      setState(() => _status = '找不到 FFmpeg，保留原始 TS：\n$tsFilePath');
-      _lastDownloadPath = tsFilePath;
+      if (mounted) {
+        setState(() => _status = '找不到 FFmpeg，保留原始 TS：\n$tsFilePath');
+        _lastDownloadPath = tsFilePath;
+      }
     }
   }
 

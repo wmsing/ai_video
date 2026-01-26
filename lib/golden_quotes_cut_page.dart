@@ -383,6 +383,7 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
   VideoPlayerController? _videoController;
   bool _showVideoPlayer = true;
   double _currentSpeed = 1.0;
+  String? _videoError;
 
   @override
   void initState() {
@@ -407,17 +408,99 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
       endFocusNodes[i].addListener(() => _onFocusChange(i, 'end'));
     }
 
+    _initVideo();
+  }
+
+  void _initVideo() {
     if (widget.defaultVideoPath != null) {
       String videoPath = widget.defaultVideoPath!;
-      if (!p.isAbsolute(videoPath)) {
-        videoPath = p.join(Directory.current.path, videoPath);
+      File file = File(videoPath);
+
+      print('DEBUG: Initial videoPath: $videoPath');
+
+      // Robust path resolution for relative paths
+      if (!file.existsSync() && !p.isAbsolute(videoPath)) {
+        print('DEBUG: File not found at relative path, trying resolution...');
+        if (widget.mainFolderPath != null) {
+          String altPath = p.join(widget.mainFolderPath!, videoPath);
+          print('DEBUG: Trying mainFolderPath resolution: $altPath');
+          if (File(altPath).existsSync()) {
+            videoPath = altPath;
+            file = File(videoPath);
+          }
+        }
+        if (!file.existsSync()) {
+          videoPath = p.join(Directory.current.path, videoPath);
+          print('DEBUG: Trying Directory.current resolution: $videoPath');
+          file = File(videoPath);
+        }
       }
-      _videoController = VideoPlayerController.file(File(videoPath))
-        ..initialize().then((_) {
-          setState(() {});
-        }).catchError((error) {
-          print('Video initialization error: $error');
+
+      print('DEBUG: Final video file path: ${file.absolute.path}');
+      if (!file.existsSync()) {
+        print('DEBUG: Final file DOES NOT EXIST');
+        setState(() {
+          _videoError = '找不到影片檔案: $videoPath\n(已嘗試從主資料夾與目前目錄解析)';
         });
+        return;
+      }
+
+      // Check for reading permissions
+      try {
+        file.readAsBytesSync();
+        print('DEBUG: File readability check PASSED');
+      } catch (e) {
+        print('DEBUG: File readability check FAILED: $e');
+        setState(() {
+          _videoError = '無法讀取影片檔案 (權限問題?): $e';
+        });
+        return;
+      }
+
+      _videoController = VideoPlayerController.file(file);
+      
+      // Add a listener to catch initialization state changes earlier
+      _videoController!.addListener(() {
+        if (_videoController!.value.hasError) {
+          print('DEBUG: Video Error from listener: ${_videoController!.value.errorDescription}');
+          if (mounted && _videoError == null) {
+            setState(() {
+              _videoError = '影片載入錯誤: ${_videoController!.value.errorDescription}';
+            });
+          }
+        }
+        if (_videoController!.value.isInitialized && _videoError != null) {
+          setState(() {
+            _videoError = null;
+          });
+        }
+      });
+
+      _videoController!.initialize().then((_) {
+        print('DEBUG: Video initialized successfully. Duration: ${_videoController!.value.duration}');
+        if (mounted) {
+          setState(() {
+            _videoError = null;
+          });
+        }
+      }).catchError((error) {
+        if (mounted) {
+          setState(() {
+            _videoError = '影片載入失敗 (Codec/Format?): $error';
+          });
+        }
+        print('DEBUG: Video initialization error: $error');
+      });
+
+      // Increase timeout to 60 seconds for very long videos (like 2-hour movies)
+      Future.delayed(const Duration(seconds: 60), () {
+        if (mounted && _videoController != null && !_videoController!.value.isInitialized && _videoError == null) {
+          print('DEBUG: Video initialization TIMED OUT after 60s');
+          setState(() {
+            _videoError = '影片載入超時 (這段影片長達 2 小時，可能是系統正在解析中，或者受限於 macOS App Sandbox)。\n若一直無法載入，建議將影片移至專案目錄內再試。';
+          });
+        }
+      });
     }
   }
 
@@ -642,15 +725,15 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
           focusNode: FocusNode(),
           autofocus: true,
           onKeyEvent: (KeyEvent event) {
-            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
-              if (_videoController != null) {
-                setState(() {
-                  _videoController!.value.isPlaying
-                      ? _videoController!.pause()
-                      : _videoController!.play();
-                });
-              }
-            }
+            // if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
+            //   if (_videoController != null) {
+            //     setState(() {
+            //       _videoController!.value.isPlaying
+            //           ? _videoController!.pause()
+            //           : _videoController!.play();
+            //     });
+            //   }
+            // }
           },
           child: Row(
           children: [
@@ -763,72 +846,117 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                 }),
               ),
             ),
-            if (_showVideoPlayer && _videoController != null && _videoController!.value.isInitialized) ...[
+            if (_showVideoPlayer && _videoController != null) ...[
               const VerticalDivider(width: 20),
               Expanded(
                 flex: 1,
-                child: Column(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _videoController!.value.isPlaying
-                              ? _videoController!.pause()
-                              : _videoController!.play();
-                        });
-                      },
-                      child: AspectRatio(
-                        aspectRatio: _videoController!.value.aspectRatio,
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            setState(() {
-                              _videoController!.value.isPlaying
-                                  ? _videoController!.pause()
-                                  : _videoController!.play();
-                            });
-                          },
-                          icon: Icon(
-                            _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                child: _videoError != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                            const SizedBox(height: 16),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Text(
+                                _videoError!,
+                                style: const TextStyle(color: Colors.red, fontSize: 12),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                FilePickerResult? result = await FilePicker.platform.pickFiles(
+                                  type: FileType.video,
+                                  initialDirectory: widget.mainFolderPath,
+                                );
+                                if (result != null && result.files.single.path != null) {
+                                  final newPath = result.files.single.path!;
+                                  _videoController?.dispose();
+                                  _videoController = VideoPlayerController.file(File(newPath))
+                                    ..initialize().then((_) {
+                                      setState(() {
+                                        _videoError = null;
+                                      });
+                                    }).catchError((e) {
+                                      setState(() {
+                                        _videoError = '重新載入失敗: $e';
+                                      });
+                                    });
+                                }
+                              },
+                              icon: const Icon(Icons.file_open),
+                              label: const Text('手動重新選擇影片'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : !_videoController!.value.isInitialized
+                        ? const Center(child: CircularProgressIndicator())
+                        : Column(
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _videoController!.value.isPlaying
+                                        ? _videoController!.pause()
+                                        : _videoController!.play();
+                                  });
+                                },
+                                child: AspectRatio(
+                                  aspectRatio: _videoController!.value.aspectRatio,
+                                  child: VideoPlayer(_videoController!),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _videoController!.value.isPlaying
+                                            ? _videoController!.pause()
+                                            : _videoController!.play();
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: VideoProgressIndicator(
+                                      _videoController!,
+                                      allowScrubbing: true,
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _setPlaybackSpeed(1.0),
+                                    style: _currentSpeed == 1.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
+                                    child: const Text('1x'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _setPlaybackSpeed(2.0),
+                                    style: _currentSpeed == 2.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
+                                    child: const Text('2x'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _setPlaybackSpeed(5.0),
+                                    style: _currentSpeed == 5.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
+                                    child: const Text('5x'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _setPlaybackSpeed(10.0),
+                                    style: _currentSpeed == 10.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
+                                    child: const Text('10x'),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                        Expanded(
-                          child: VideoProgressIndicator(
-                            _videoController!,
-                            allowScrubbing: true,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => _setPlaybackSpeed(1.0),
-                          style: _currentSpeed == 1.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
-                          child: const Text('1x'),
-                        ),
-                        TextButton(
-                          onPressed: () => _setPlaybackSpeed(2.0),
-                          style: _currentSpeed == 2.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
-                          child: const Text('2x'),
-                        ),
-                        TextButton(
-                          onPressed: () => _setPlaybackSpeed(5.0),
-                          style: _currentSpeed == 5.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
-                          child: const Text('5x'),
-                        ),
-                        TextButton(
-                          onPressed: () => _setPlaybackSpeed(10.0),
-                          style: _currentSpeed == 10.0 ? TextButton.styleFrom(backgroundColor: Colors.blue.shade100) : null,
-                          child: const Text('10x'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ],
           ],

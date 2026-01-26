@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -384,6 +385,7 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
   bool _showVideoPlayer = true;
   double _currentSpeed = 1.0;
   String? _videoError;
+  Timer? _positionTimer;
 
   @override
   void initState() {
@@ -409,6 +411,13 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
     }
 
     _initVideo();
+
+    // Timer for real-time position updates
+    _positionTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (mounted && _videoController != null && _videoController!.value.isInitialized) {
+        setState(() {});
+      }
+    });
   }
 
   void _initVideo() {
@@ -474,6 +483,8 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
             _videoError = null;
           });
         }
+        // Always rebuild to update position text
+        if (mounted) setState(() {});
       });
 
       _videoController!.initialize().then((_) {
@@ -506,6 +517,7 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
 
   @override
   void dispose() {
+    _positionTimer?.cancel();
     for (var charControllers in controllers) {
       for (var controller in charControllers.values) {
         controller.dispose();
@@ -788,7 +800,10 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                               const SizedBox(width: 8),
                               ElevatedButton(
                                 onPressed: () => _setStartTime(index),
-                                child: const Text('Set Start'),
+                                  style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.tealAccent.shade100,
+                                ),
+                                child: const Text('套用時間'),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -801,7 +816,10 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                               const SizedBox(width: 8),
                               ElevatedButton(
                                 onPressed: () => _setEndTime(index),
-                                child: const Text('Set End'),
+                                style: ElevatedButton.styleFrom(
+                                                                  backgroundColor: Colors.redAccent.shade100,
+                                ),
+                                child: const Text('套用時間'),
                               ),
                             ],
                           ),
@@ -914,17 +932,25 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  IconButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _videoController!.value.isPlaying
-                                            ? _videoController!.pause()
-                                            : _videoController!.play();
-                                      });
-                                    },
-                                    icon: Icon(
-                                      _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                                    ),
+                                  Column(
+                                    children: [
+                                      IconButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _videoController!.value.isPlaying
+                                                ? _videoController!.pause()
+                                                : _videoController!.play();
+                                          });
+                                        },
+                                        icon: Icon(
+                                          _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatDuration(_videoController!.value.position),
+                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                      ),
+                                    ],
                                   ),
                                   Expanded(
                                     child: VideoProgressIndicator(
@@ -954,6 +980,12 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                                     child: const Text('10x'),
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                '按畫面區域可以播放/暫停',
+                                style: TextStyle(fontSize: 10, color: Colors.grey),
+                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),

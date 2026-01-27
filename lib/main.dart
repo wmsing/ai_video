@@ -8,6 +8,7 @@ import 'subtitle_page.dart';
 import 'embed_subtitle_page.dart';
 import 'story_video_page.dart';
 import 'golden_quotes_cut_page.dart';
+import 'cut_tool_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -191,6 +192,19 @@ class _MyHomePageState extends State<MyHomePage> {
                             backgroundColor: Colors.orange.shade100,
                           ),
                           child: const Text('劇情影片 (Summary)'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: (isFolderSet && isToolsSet) ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const CutToolPage()),
+                            );
+                          } : null,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(200, 45),
+                            backgroundColor: Colors.blue.shade100,
+                          ),
+                          child: const Text('CUT工具'),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(

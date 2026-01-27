@@ -136,72 +136,93 @@ class _DownloadPageState extends State<DownloadPage> {
       final video = await yt.videos.get(videoId);
       final manifest = await yt.videos.streamsClient.getManifest(video.id);
       
-      if (manifest.muxed.isNotEmpty) {
-        // Prioritize 1080p, then 720p, otherwise use highest bitrate
-        var streamInfo = manifest.muxed.where((s) => s.videoResolution.height == 1080).firstOrNull;
-        print(streamInfo);
-        if (streamInfo == null) {
-          streamInfo = manifest.muxed.where((s) => s.videoResolution.height == 720).firstOrNull;
-        }
-        if (streamInfo == null) {
-          streamInfo = manifest.muxed.withHighestBitrate();
-        }
-        
-        // Use user-defined name or default to video title
-        final customName = _nameController.text.trim();
-        final folderName = customName.isNotEmpty 
-            ? customName 
-            : video.title.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
-            
-        Directory dir = await _getAppDownloadDirectory(folderName);
+      // Use user-defined name or default to video title
+      final customName = _nameController.text.trim();
+      final folderName = customName.isNotEmpty 
+          ? customName 
+          : video.title.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
+          
+      Directory dir = await _getAppDownloadDirectory(folderName);
+      final filePath = p.join(dir.path, '$folderName.mp4');
 
-        final filePath = p.join(dir.path, '$folderName.mp4');
-
-        // 1. Check if file already exists
-        if (await File(filePath).exists()) {
-          if (mounted) {
-            setState(() {
-              _status = '檔案已存在於 AI_Video 資料夾：\n$filePath';
-              _lastDownloadPath = filePath;
-              _progress = 1.0;
-            });
-          }
-          // Automatically open folder since it exists
-          await _openFolder();
-          return;
-        }
-        
-        if (mounted) setState(() => _status = 'Downloading: ${video.title}');
-        
-        final file = File(filePath);
-        final stream = yt.videos.streamsClient.get(streamInfo);
-        final fileStream = file.openWrite();
-
-        final totalSize = streamInfo.size.totalBytes;
-        int downloaded = 0;
-
-        await for (final data in stream) {
-          fileStream.add(data);
-          downloaded += data.length;
-          if (mounted) {
-            setState(() {
-              _progress = downloaded / totalSize;
-              _status = 'Downloading: ${(_progress * 100).toStringAsFixed(1)}%';
-            });
-          }
-        }
-
-        await fileStream.flush();
-        await fileStream.close();
-        await _addToDownloadHistory(filePath);
+      // 1. Check if file already exists
+      if (await File(filePath).exists()) {
         if (mounted) {
           setState(() {
-            _status = 'Successfully downloaded to:\n$filePath';
+            _status = '檔案已存在於 AI_Video 資料夾：\n$filePath';
             _lastDownloadPath = filePath;
+            _progress = 1.0;
           });
         }
+        await _openFolder();
+        return;
+      }
+
+      // 2. Determine which streams to download
+      VideoStreamInfo? videoStream;
+      AudioStreamInfo? audioStream;
+      MuxedStreamInfo? muxedStream;
+
+      // Try adaptive streams for 1080p or 720p first (YouTube usually separates them)
+      videoStream = manifest.videoOnly.where((s) => s.videoResolution.height == 1080).firstOrNull;
+      if (videoStream == null) {
+        videoStream = manifest.videoOnly.where((s) => s.videoResolution.height == 720).firstOrNull;
+      }
+
+      if (videoStream != null) {
+        audioStream = manifest.audioOnly.withHighestBitrate();
+        if (mounted) setState(() => _status = 'Found adaptive ${videoStream!.videoResolution.height}p. Downloading video & audio...');
+      } else {
+        // Fallback to muxed streams
+        muxedStream = manifest.muxed.where((s) => s.videoResolution.height == 1080).firstOrNull;
+        if (muxedStream == null) {
+          muxedStream = manifest.muxed.where((s) => s.videoResolution.height == 720).firstOrNull;
+        }
+        if (muxedStream == null) {
+          muxedStream = manifest.muxed.withHighestBitrate();
+        }
+        if (mounted) setState(() => _status = 'Downloading muxed stream: ${video.title}');
+      }
+
+      if (videoStream != null && audioStream != null) {
+        // Download adaptive streams
+        final videoTempPath = p.join(dir.path, 'temp_video.mp4');
+        final audioTempPath = p.join(dir.path, 'temp_audio.m4a');
+        
+        // Download Video
+        await _downloadStream(yt, videoStream, videoTempPath, 'Video');
+        // Download Audio
+        await _downloadStream(yt, audioStream, audioTempPath, 'Audio');
+        
+        // Merge with FFmpeg
+        if (mounted) setState(() => _status = 'Merging video and audio...');
+        final result = await Process.run('zsh', [
+          '-l',
+          '-c',
+          'ffmpeg -i "$videoTempPath" -i "$audioTempPath" -c copy -y "$filePath"'
+        ]);
+
+        if (await File(videoTempPath).exists()) await File(videoTempPath).delete();
+        if (await File(audioTempPath).exists()) await File(audioTempPath).delete();
+
+        if (result.exitCode != 0) {
+          throw 'FFmpeg merge failed: ${result.stderr}';
+        }
+      } else if (muxedStream != null) {
+        // Download single muxed stream
+        await _downloadStream(yt, muxedStream, filePath, 'Video');
       } else {
         if (mounted) setState(() => _status = 'No suitable stream found for this video.');
+        return;
+      }
+
+      await _addToDownloadHistory(filePath);
+      if (mounted) {
+        setState(() {
+          _status = 'Successfully downloaded to:\n$filePath';
+          _lastDownloadPath = filePath;
+          _progress = 1.0;
+        });
       }
     } catch (e) {
       if (mounted) setState(() => _status = 'YouTube 下載錯誤: $e');
@@ -209,6 +230,29 @@ class _DownloadPageState extends State<DownloadPage> {
     } finally {
       yt.close();
     }
+  }
+
+  Future<void> _downloadStream(YoutubeExplode yt, StreamInfo streamInfo, String savePath, String label) async {
+    final stream = yt.videos.streamsClient.get(streamInfo);
+    final file = File(savePath);
+    final fileStream = file.openWrite();
+
+    final totalSize = streamInfo.size.totalBytes;
+    int downloaded = 0;
+
+    await for (final data in stream) {
+      fileStream.add(data);
+      downloaded += data.length;
+      if (mounted) {
+        setState(() {
+          _progress = downloaded / totalSize;
+          _status = 'Downloading $label: ${(_progress * 100).toStringAsFixed(1)}%';
+        });
+      }
+    }
+
+    await fileStream.flush();
+    await fileStream.close();
   }
 
   Future<void> _downloadM3U8(String url) async {

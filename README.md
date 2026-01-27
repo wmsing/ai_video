@@ -2,6 +2,49 @@
 
 一個整合影片下載、字幕提取與壓制功能的 macOS 應用程式。
 
+## CI/CD
+
+This project uses GitHub Actions for continuous integration and deployment.
+
+### CI Pipeline
+
+The CI pipeline runs on every push and pull request to main/master/develop branches and includes:
+
+- **Code Analysis**: Flutter analyze and format checking
+- **Testing**: Unit tests with code coverage reporting
+- **Build Verification**: 
+  - Android APK build
+  - iOS build (macOS runner)
+  - macOS build
+  - Web build
+- **Deployment**: Automatic deployment to GitHub Pages for web version
+
+### Status Badges
+
+[![CI](https://github.com/your-username/ai_video/workflows/CI/CD/badge.svg)](https://github.com/your-username/ai_video/actions)
+[![codecov](https://codecov.io/gh/your-username/ai_video/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/ai_video)
+
+### Local Development
+
+Before pushing code, run these commands locally:
+
+```bash
+# Install dependencies
+flutter pub get
+
+# Run analysis
+flutter analyze
+
+# Run tests
+flutter test --coverage
+
+# Check formatting
+flutter format --set-exit-if-changed .
+
+# Build for your platform
+flutter build macos --release  # or ios, android, web
+```
+
 ## 功能特色
 
 - **影片下載**：支援 YouTube 與 M3U8 串流下載

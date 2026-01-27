@@ -13,7 +13,6 @@ The CI pipeline runs on every push and pull request to main/master/develop branc
 - **Code Analysis**: Flutter analyze and format checking
 - **Testing**: Unit tests with code coverage reporting
 - **Build Verification**: 
-  - Android APK build
   - iOS build (macOS runner)
   - macOS build
   - Web build
@@ -23,7 +22,6 @@ The CI pipeline runs on every push and pull request to main/master/develop branc
 
 After successful CI/CD runs, you can download the following build artifacts from the Actions tab:
 
-- **Android APK**: `android-apk` - Ready-to-install Android application
 - **macOS App**: `macos-app` - macOS application bundle
 - **Web Build**: `web-build` - Static web files for deployment
 
@@ -54,7 +52,7 @@ flutter test --coverage
 flutter format --set-exit-if-changed .
 
 # Build for your platform
-flutter build macos --release  # or ios, android, web
+flutter build macos --release  # or ios, web
 ```
 
 ### CI/CD Monitoring

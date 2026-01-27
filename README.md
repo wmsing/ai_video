@@ -19,10 +19,22 @@ The CI pipeline runs on every push and pull request to main/master/develop branc
   - Web build
 - **Deployment**: Automatic deployment to GitHub Pages for web version
 
+### Build Artifacts
+
+After successful CI/CD runs, you can download the following build artifacts from the Actions tab:
+
+- **Android APK**: `android-apk` - Ready-to-install Android application
+- **macOS App**: `macos-app` - macOS application bundle
+- **Web Build**: `web-build` - Static web files for deployment
+
+### Web Deployment
+
+The web version is automatically deployed to: https://wmsing.github.io/ai_video/
+
 ### Status Badges
 
-[![CI](https://github.com/your-username/ai_video/workflows/CI/CD/badge.svg)](https://github.com/your-username/ai_video/actions)
-[![codecov](https://codecov.io/gh/your-username/ai_video/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/ai_video)
+[![CI](https://github.com/wmsing/ai_video/workflows/CI/CD/badge.svg)](https://github.com/wmsing/ai_video/actions)
+[![codecov](https://codecov.io/gh/wmsing/ai_video/branch/main/graph/badge.svg)](https://codecov.io/gh/wmsing/ai_video)
 
 ### Local Development
 
@@ -44,6 +56,13 @@ flutter format --set-exit-if-changed .
 # Build for your platform
 flutter build macos --release  # or ios, android, web
 ```
+
+### CI/CD Monitoring
+
+- **Actions Tab**: Monitor build status at https://github.com/wmsing/ai_video/actions
+- **Coverage Reports**: View test coverage at https://codecov.io/gh/wmsing/ai_video
+- **Web App**: Access deployed version at https://wmsing.github.io/ai_video/
+- **Artifacts**: Download build outputs from successful workflow runs
 
 ## 功能特色
 

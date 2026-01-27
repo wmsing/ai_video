@@ -165,9 +165,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
       // Try adaptive streams for 1080p or 720p first (YouTube usually separates them)
       videoStream = manifest.videoOnly.where((s) => s.videoResolution.height == 1080).firstOrNull;
-      if (videoStream == null) {
-        videoStream = manifest.videoOnly.where((s) => s.videoResolution.height == 720).firstOrNull;
-      }
+      videoStream ??= manifest.videoOnly.where((s) => s.videoResolution.height == 720).firstOrNull;
 
       if (videoStream != null) {
         audioStream = manifest.audioOnly.withHighestBitrate();
@@ -175,12 +173,8 @@ class _DownloadPageState extends State<DownloadPage> {
       } else {
         // Fallback to muxed streams
         muxedStream = manifest.muxed.where((s) => s.videoResolution.height == 1080).firstOrNull;
-        if (muxedStream == null) {
-          muxedStream = manifest.muxed.where((s) => s.videoResolution.height == 720).firstOrNull;
-        }
-        if (muxedStream == null) {
-          muxedStream = manifest.muxed.withHighestBitrate();
-        }
+        muxedStream ??= manifest.muxed.where((s) => s.videoResolution.height == 720).firstOrNull;
+        muxedStream ??= manifest.muxed.withHighestBitrate();
         if (mounted) setState(() => _status = 'Downloading muxed stream: ${video.title}');
       }
 

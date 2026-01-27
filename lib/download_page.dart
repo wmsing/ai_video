@@ -137,7 +137,15 @@ class _DownloadPageState extends State<DownloadPage> {
       final manifest = await yt.videos.streamsClient.getManifest(video.id);
       
       if (manifest.muxed.isNotEmpty) {
-        final streamInfo = manifest.muxed.withHighestBitrate();
+        // Prioritize 1080p, then 720p, otherwise use highest bitrate
+        var streamInfo = manifest.muxed.where((s) => s.videoResolution.height == 1080).firstOrNull;
+        print(streamInfo);
+        if (streamInfo == null) {
+          streamInfo = manifest.muxed.where((s) => s.videoResolution.height == 720).firstOrNull;
+        }
+        if (streamInfo == null) {
+          streamInfo = manifest.muxed.withHighestBitrate();
+        }
         
         // Use user-defined name or default to video title
         final customName = _nameController.text.trim();

@@ -46,7 +46,7 @@ class DownloadBloc extends Bloc<DownloadEvent, DownloadState> {
         throw Exception('Unsupported URL type');
       }
 
-      emit(DownloadSuccess(filePath ?? folderPath));
+      emit(DownloadSuccess(filePath));
     } catch (e) {
       emit(DownloadError(e.toString()));
     }

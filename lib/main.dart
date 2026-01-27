@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
-import 'download_page.dart';
+import 'feature/download/download_page.dart';
 import 'subtitle_page.dart';
 import 'embed_subtitle_page.dart';
 import 'story_video_page.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_video/download_page.dart';
+import 'package:ai_video/feature/download/download_page.dart';
 
 void main() {
   testWidgets('DownloadPage renders correctly', (WidgetTester tester) async {

@@ -1,6 +1,6 @@
 # AI Video App
 
-一個整合影片下載、字幕提取與壓制功能的 macOS 應用程式。
+一個整合影片下載、字幕提取與壓制功能的 Flutter 應用程式，支援 macOS 和 Web 部署。
 
 ## CI/CD
 
@@ -28,6 +28,8 @@ After successful CI/CD runs, you can download the following build artifacts from
 ### Web Deployment
 
 The web version is automatically deployed to: https://wmsing.github.io/ai_video/
+
+**Note**: The web version provides a demo interface but requires server-side components (Python AI tools) for full functionality. For complete features, use the macOS desktop application.
 
 ### Status Badges
 
@@ -72,9 +74,8 @@ flutter build macos --release  # or ios, web
 
 ## 系統需求
 
-- macOS 12.0 或以上
-- Python 3.8+
-- FFmpeg (系統已安裝或自行安裝)
+- **macOS 版本**: macOS 12.0 或以上, Python 3.8+, FFmpeg
+- **Web 版本**: 現代瀏覽器 (Chrome, Firefox, Safari), 需搭配後端服務使用
 
 ## 部署到目標 Mac 電腦
 

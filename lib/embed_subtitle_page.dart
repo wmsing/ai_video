@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class EmbedSubtitlePage extends StatefulWidget {
@@ -36,7 +35,7 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
   }
 
   Future<void> _pickVideo() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.video,
       initialDirectory: _mainFolderPath,
     );
@@ -50,7 +49,7 @@ class _EmbedSubtitlePageState extends State<EmbedSubtitlePage> {
   }
 
   Future<void> _pickSrt() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['srt'],
       initialDirectory: _mainFolderPath,

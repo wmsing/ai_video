@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+// import 'package:flutter/services.dart'; removed as it is unnecessary
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,7 +46,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
   }
 
   Future<void> _pickVideo() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.video,
       initialDirectory: _mainFolderPath,
     );
@@ -60,7 +60,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
   }
 
   Future<void> _pickJson() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       initialDirectory: _mainFolderPath,
@@ -126,7 +126,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
         builder: (context) {
           final controller = TextEditingController();
           if (_selectedVideoPath != null) {
-            controller.text = p.basenameWithoutExtension(_selectedVideoPath!) + '_quotes.json';
+            controller.text = '${p.basenameWithoutExtension(_selectedVideoPath!)}_quotes.json';
           } else {
             controller.text = 'quotes.json';
           }
@@ -671,7 +671,7 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
   }
 
   Future<void> _pickItemVideo(int index) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.video,
       initialDirectory: widget.mainFolderPath,
     );
@@ -886,7 +886,7 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
                               onPressed: () async {
-                                FilePickerResult? result = await FilePicker.platform.pickFiles(
+                                FilePickerResult? result = await FilePicker.pickFiles(
                                   type: FileType.video,
                                   initialDirectory: widget.mainFolderPath,
                                 );

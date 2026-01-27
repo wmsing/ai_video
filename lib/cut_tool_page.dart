@@ -129,9 +129,10 @@ class _CutToolPageState extends State<CutToolPage> {
   }
 
   Future<void> _selectVideo() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.video,
       allowMultiple: false,
+      initialDirectory: _mainFolderPath
     );
 
     if (result != null && result.files.single.path != null) {
@@ -224,9 +225,10 @@ class _CutToolPageState extends State<CutToolPage> {
   }
 
   Future<void> _selectConcatenateVideos() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.video,
       allowMultiple: true,
+      initialDirectory: _mainFolderPath
     );
 
     if (result != null) {
@@ -544,7 +546,7 @@ class _VideoControlsState extends State<_VideoControls> {
       style: TextButton.styleFrom(
         minimumSize: Size.zero,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        backgroundColor: isSelected ? Colors.blue.withOpacity(0.3) : null,
+        backgroundColor: isSelected ? Colors.blue.withValues(alpha: 0.3) : null,
       ),
       child: Text(
         '${speed.toInt()}x',

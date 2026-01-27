@@ -56,7 +56,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _selectMainFolder() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    String? selectedDirectory = await FilePicker.getDirectoryPath();
     if (selectedDirectory != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('main_folder_path', selectedDirectory);
@@ -65,7 +65,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _selectAiToolsFolder() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    String? selectedDirectory = await FilePicker.getDirectoryPath();
     if (selectedDirectory != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('ai_tools_path', selectedDirectory);

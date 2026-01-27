@@ -41,7 +41,7 @@ dependencies:
   dio_cache_interceptor: ^4.0.5
   url_launcher: ^6.3.2
   file_picker: ^10.3.8
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.2.3
   video_player: ^2.9.2
 
 dev_dependencies:

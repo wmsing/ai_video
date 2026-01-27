@@ -3,12 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
-import 'feature/download/download_page.dart';
-import 'subtitle_page.dart';
-import 'embed_subtitle_page.dart';
-import 'story_video_page.dart';
-import 'golden_quotes_cut_page.dart';
-import 'cut_tool_page.dart';
+import 'features/download/download_page.dart';
+import 'features/subtitle/subtitle_page.dart';
+import 'features/embed_subtitle/embed_subtitle_page.dart';
+import 'features/story_video/story_video_page.dart';
+import 'features/golden_quotes_cut/golden_quotes_cut_page.dart';
+import 'features/cut_tool/cut_tool_page.dart';
 
 void main() {
   runApp(const MyApp());

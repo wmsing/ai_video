@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
@@ -19,6 +20,7 @@ class _CutToolPageState extends State<CutToolPage> {
   final TextEditingController _endTimeController = TextEditingController(text: '00:00:10');
   final TextEditingController _fileNameController = TextEditingController(text: '_cut');
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _concatenateOutputController = TextEditingController();
   final FocusNode _startFocusNode = FocusNode();
   final FocusNode _endFocusNode = FocusNode();
   
@@ -64,6 +66,7 @@ class _CutToolPageState extends State<CutToolPage> {
     _endTimeController.dispose();
     _fileNameController.dispose();
     _titleController.dispose();
+    _concatenateOutputController.dispose();
     _startFocusNode.dispose();
     _endFocusNode.dispose();
     super.dispose();
@@ -148,6 +151,9 @@ class _CutToolPageState extends State<CutToolPage> {
     await _videoPlayerController?.dispose();
     _videoPlayerController = VideoPlayerController.file(file);
     await _videoPlayerController!.initialize();
+    // Set default start to 00:00:00 and end to video duration
+    _startTimeController.text = '00:00:00';
+    _endTimeController.text = _formatDuration(_videoPlayerController!.value.duration);
     setState(() {});
   }
 
@@ -250,7 +256,10 @@ class _CutToolPageState extends State<CutToolPage> {
     try {
       final dir = p.dirname(_concatenateFiles.first.path);
       final ext = p.extension(_concatenateFiles.first.path);
-      final outputPath = p.join(dir, 'concatenated_${DateTime.now().millisecondsSinceEpoch}$ext');
+      final baseName = _concatenateOutputController.text.trim();
+      final isDefault = baseName.isEmpty || baseName == 'concatenated';
+      final fileName = isDefault ? '${baseName.isEmpty ? 'concatenated' : baseName}_${DateTime.now().millisecondsSinceEpoch}$ext' : '$baseName$ext';
+      final outputPath = p.join(dir, fileName);
 
       // Create temporary file list for ffmpeg
       final listFile = File(p.join(dir, 'ffmpeg_list.txt'));
@@ -312,7 +321,24 @@ class _CutToolPageState extends State<CutToolPage> {
                     ),
                     if (_selectedFile != null) ...[
                       const SizedBox(height: 8),
-                      Text('已選: ${p.basename(_selectedFile!.path)}'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SelectableText('已選: ${p.basename(_selectedFile!.path)}'),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy),
+                            onPressed: () {
+                              // Copy the full path to clipboard
+                              Clipboard.setData(ClipboardData(text: _selectedFile!.path));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('檔案路徑已複製到剪貼簿')),
+                              );
+                            },
+                            tooltip: '複製檔案路徑',
+                          ),
+                        ],
+                      ),
                       Row(
                         children: [
                           Expanded(
@@ -397,7 +423,15 @@ class _CutToolPageState extends State<CutToolPage> {
                     if (_concatenateFiles.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text('已選 ${_concatenateFiles.length} 個影片:'),
-                      ..._concatenateFiles.map((f) => Text('- ${p.basename(f.path)}', overflow: TextOverflow.ellipsis)),
+                      ..._concatenateFiles.map((f) => SelectableText('- ${p.basename(f.path)}')),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _concatenateOutputController,
+                        decoration: const InputDecoration(
+                          labelText: '輸出檔案名稱 (可選)',
+                          hintText: 'concatenated',
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: _isProcessing ? null : _concatenateVideos,

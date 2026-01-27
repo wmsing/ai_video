@@ -79,7 +79,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
@@ -133,7 +133,7 @@ jobs:
         run: flutter build macos --release
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-app
           path: build/macos/Build/Products/Release/ai_video.app
@@ -158,7 +158,7 @@ jobs:
         run: flutter build web --release
 
       - name: Upload web artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: web-build
           path: build/web

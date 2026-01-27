@@ -233,26 +233,52 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Future<void> _downloadStream(YoutubeExplode yt, StreamInfo streamInfo, String savePath, String label) async {
-    final stream = yt.videos.streamsClient.get(streamInfo);
     final file = File(savePath);
-    final fileStream = file.openWrite();
+    if (await file.exists()) await file.delete();
 
     final totalSize = streamInfo.size.totalBytes;
     int downloaded = 0;
+    int retries = 0;
+    const maxRetries = 5;
 
-    await for (final data in stream) {
-      fileStream.add(data);
-      downloaded += data.length;
-      if (mounted) {
-        setState(() {
-          _progress = downloaded / totalSize;
-          _status = 'Downloading $label: ${(_progress * 100).toStringAsFixed(1)}%';
-        });
+    while (downloaded < totalSize && retries < maxRetries) {
+      try {
+        final stream = yt.videos.streamsClient.get(streamInfo);
+        final raf = await file.open(mode: FileMode.writeOnlyAppend);
+        
+        await for (final data in stream) {
+          raf.writeFromSync(data);
+          downloaded += data.length;
+          
+          if (mounted) {
+            setState(() {
+              _progress = downloaded / totalSize;
+              _status = 'Downloading $label: ${(_progress * 100).toStringAsFixed(1)}% (${(downloaded / 1024 / 1024).toStringAsFixed(1)}MB)';
+            });
+          }
+        }
+        
+        await raf.close();
+        break; // Success, exit loop
+        
+      } catch (e) {
+        retries++;
+        print('Download attempt $retries failed: $e');
+        
+        if (retries >= maxRetries) {
+          throw 'Failed to download after $maxRetries attempts: $e';
+        }
+        
+        // Wait before retry
+        await Future.delayed(Duration(seconds: 2 * retries));
+        
+        // Reset file for retry
+        if (await file.exists()) {
+          await file.delete();
+        }
+        downloaded = 0;
       }
     }
-
-    await fileStream.flush();
-    await fileStream.close();
   }
 
   Future<void> _downloadM3U8(String url) async {

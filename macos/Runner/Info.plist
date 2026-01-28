@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSCameraUsageDescription</key>
+<string>Camera access for reaction videos</string>	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/><key>NSMicrophoneUsageDescription</key>
+<string>Microphone access for reaction videos</string>
 </dict>
 </plist>

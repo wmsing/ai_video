@@ -19,6 +19,16 @@ class StartFfmpegDownload extends FfmpegEvent {
   List<Object?> get props => [url, savePath, fileName];
 }
 
+class CombineReactionVideo extends FfmpegEvent {
+  final String videoAPath;
+  final String webcamPath;
+  final String outputPath;
+  final bool useOverlay;
+  const CombineReactionVideo(this.videoAPath, this.webcamPath, this.outputPath, {this.useOverlay = true});
+  @override
+  List<Object?> get props => [videoAPath, webcamPath, outputPath, useOverlay];
+}
+
 class CancelFfmpegDownload extends FfmpegEvent {}
 
 // States
@@ -53,6 +63,7 @@ class FfmpegBloc extends Bloc<FfmpegEvent, FfmpegState> {
   FfmpegBloc() : super(FfmpegInitial()) {
     on<StartFfmpegDownload>(_onStartDownload);
     on<CancelFfmpegDownload>(_onCancelDownload);
+    on<CombineReactionVideo>(_onCombineReactionVideo);
   }
 
   Future<void> _onStartDownload(StartFfmpegDownload event, Emitter<FfmpegState> emit) async {
@@ -90,5 +101,56 @@ class FfmpegBloc extends Bloc<FfmpegEvent, FfmpegState> {
     print('[FfmpegBloc] Cancel download');
     _process?.kill();
     emit(FfmpegInitial());
+  }
+
+  Future<void> _onCombineReactionVideo(CombineReactionVideo event, Emitter<FfmpegState> emit) async {
+    print('[FfmpegBloc] Combine reaction video: ${event.videoAPath}, ${event.webcamPath}, ${event.outputPath}');
+    emit(FfmpegLoading(0.01));
+    
+    List<String> args;
+    if (event.useOverlay) {
+      args = [
+        '-y',
+        '-i', event.videoAPath,
+        '-i', event.webcamPath,
+        '-filter_complex', '[0:v][1:v]overlay=W-w-10:H-h-10[v];[0:a][1:a]amix=inputs=2[a]',
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        event.outputPath,
+      ];
+    } else {
+      // Side by side (hstack) with equal height and mixed audio
+      args = [
+        '-y',
+        '-i', event.videoAPath,
+        '-i', event.webcamPath,
+        '-filter_complex', '[0:v]scale=-1:720:force_original_aspect_ratio=increase,crop=720:720[v0];[1:v]scale=-1:720:force_original_aspect_ratio=increase,crop=720:720[v1];[v0][v1]hstack=inputs=2[v];[0:a][1:a]amix=inputs=2[a]',
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        event.outputPath,
+      ];
+    }
+    
+    try {
+      _process = await Process.start('ffmpeg', args);
+      print('[FfmpegBloc] ffmpeg process started for combine');
+      _process!.stdout.transform(SystemEncoding().decoder).listen((data) {
+        print('[FfmpegBloc] ffmpeg stdout: $data');
+      });
+      _process!.stderr.transform(SystemEncoding().decoder).listen((data) {
+        print('[FfmpegBloc] ffmpeg stderr: $data');
+      });
+      await _process!.exitCode;
+      print('[FfmpegBloc] ffmpeg combine finished');
+      emit(FfmpegLoading(1.0));
+      emit(FfmpegSuccess(event.outputPath));
+    } catch (e) {
+      print('[FfmpegBloc] ffmpeg combine failed: $e');
+      emit(FfmpegError('ffmpeg failed: $e'));
+    }
   }
 }

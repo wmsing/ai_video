@@ -104,20 +104,20 @@ class DownloadBloc extends Bloc<DownloadEvent, DownloadState> {
     return filePath;
   }
 
-  List<String> _parseM3U8(String content, String baseUrl) {
-    final lines = LineSplitter.split(content).toList();
-    final segments = <String>[];
+  // List<String> _parseM3U8(String content, String baseUrl) {
+  //   final lines = LineSplitter.split(content).toList();
+  //   final segments = <String>[];
 
-    for (final line in lines) {
-      if (line.startsWith('#')) continue;
-      if (line.isNotEmpty) {
-        final segmentUrl = line.startsWith('http') ? line : p.join(p.dirname(baseUrl), line);
-        segments.add(segmentUrl);
-      }
-    }
+  //   for (final line in lines) {
+  //     if (line.startsWith('#')) continue;
+  //     if (line.isNotEmpty) {
+  //       final segmentUrl = line.startsWith('http') ? line : p.join(p.dirname(baseUrl), line);
+  //       segments.add(segmentUrl);
+  //     }
+  //   }
 
-    return segments;
-  }
+  //   return segments;
+  // }
 
   void _onCancelDownload(CancelDownload event, Emitter<DownloadState> emit) {
     // Cancel logic - for now, just reset

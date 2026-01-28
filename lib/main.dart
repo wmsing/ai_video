@@ -9,6 +9,7 @@ import 'features/embed_subtitle/embed_subtitle_page.dart';
 import 'features/story_video/story_video_page.dart';
 import 'features/golden_quotes_cut/golden_quotes_cut_page.dart';
 import 'features/cut_tool/cut_tool_page.dart';
+import 'features/reaction_video/reaction_video_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'shared/blocs/ffmpeg_bloc.dart';
 
@@ -223,6 +224,19 @@ class _MyHomePageState extends State<MyHomePage> {
                             backgroundColor: Colors.amber.shade100,
                           ),
                           child: const Text('金句CUT'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed:  () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const ReactionVideoPage()),
+                            );
+                          } ,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(200, 45),
+                            backgroundColor: Colors.purple.shade100,
+                          ),
+                          child: const Text('Reaction Video'),
                         ),
                       ],
                     ),

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'download_event.dart';
 import 'download_state.dart';
+import '../../../shared/blocs/ffmpeg_bloc.dart';
 
 class DownloadBloc extends Bloc<DownloadEvent, DownloadState> {
   DownloadBloc() : super(DownloadInitial()) {
@@ -83,28 +84,23 @@ class DownloadBloc extends Bloc<DownloadEvent, DownloadState> {
   }
 
   Future<String> _downloadM3U8(String url, String savePath, Emitter<DownloadState> emit) async {
-    final dio = Dio();
-    final response = await dio.get(url);
-    final m3u8Content = response.data as String;
-
-    final segments = _parseM3U8(m3u8Content, url);
+    // Use shared FfmpegBloc for m3u8 download
     final fileName = 'playlist_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    final filePath = p.join(savePath, fileName);
-    final file = File(filePath);
-    final fileStream = file.openWrite();
-
-    var totalSegments = segments.length;
-    var downloadedSegments = 0;
-
-    for (final segmentUrl in segments) {
-      final segmentResponse = await dio.get<List<int>>(segmentUrl, options: Options(responseType: ResponseType.bytes));
-      fileStream.add(segmentResponse.data!);
-      downloadedSegments++;
-      final progress = downloadedSegments / totalSegments;
-      emit(DownloadLoading(progress));
-    }
-
-    await fileStream.close();
+    final ffmpegBloc = FfmpegBloc();
+    ffmpegBloc.add(StartFfmpegDownload(url, savePath, fileName));
+    // Listen for completion
+    final completer = Completer<String>();
+    final subscription = ffmpegBloc.stream.listen((state) {
+      if (state is FfmpegLoading) {
+        emit(DownloadLoading(state.progress));
+      } else if (state is FfmpegSuccess) {
+        completer.complete(state.filePath);
+      } else if (state is FfmpegError) {
+        completer.completeError(state.error);
+      }
+    });
+    final filePath = await completer.future;
+    await subscription.cancel();
     return filePath;
   }
 

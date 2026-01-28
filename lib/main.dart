@@ -9,6 +9,8 @@ import 'features/embed_subtitle/embed_subtitle_page.dart';
 import 'features/story_video/story_video_page.dart';
 import 'features/golden_quotes_cut/golden_quotes_cut_page.dart';
 import 'features/cut_tool/cut_tool_page.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'shared/blocs/ffmpeg_bloc.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,13 +21,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AI Video',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return BlocProvider<FfmpegBloc>(
+      create: (_) => FfmpegBloc(),
+      child: MaterialApp(
+        title: 'AI Video',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: const MyHomePage(),
       ),
-      home: const MyHomePage(),
     );
   }
 }

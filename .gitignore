@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+.vscode/
+ios/build/
+macos/build/
+devtools_options.yaml

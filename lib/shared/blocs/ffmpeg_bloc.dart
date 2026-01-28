@@ -24,7 +24,8 @@ class CombineReactionVideo extends FfmpegEvent {
   final String webcamPath;
   final String outputPath;
   final bool useOverlay;
-  const CombineReactionVideo(this.videoAPath, this.webcamPath, this.outputPath, {this.useOverlay = true});
+  final String? customFilter;
+  const CombineReactionVideo(this.videoAPath, this.webcamPath, this.outputPath, {this.useOverlay = true, this.customFilter});
   @override
   List<Object?> get props => [videoAPath, webcamPath, outputPath, useOverlay];
 }
@@ -108,7 +109,20 @@ class FfmpegBloc extends Bloc<FfmpegEvent, FfmpegState> {
     emit(FfmpegLoading(0.01));
     
     List<String> args;
-    if (event.useOverlay) {
+    if (event.customFilter != null && event.customFilter!.isNotEmpty) {
+      args = [
+        '-y',
+        '-i', event.videoAPath,
+        '-i', event.webcamPath,
+        '-filter_complex', event.customFilter!,
+        '-map', '[v]',
+        '-map', '0:a?',
+        '-map', '1:a?',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        event.outputPath,
+      ];
+    } else if (event.useOverlay) {
       args = [
         '-y',
         '-i', event.videoAPath,

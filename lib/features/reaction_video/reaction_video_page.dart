@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import 'reaction_video_bloc.dart';
 import 'video_preview_page.dart';
 
@@ -70,23 +72,29 @@ class _ReactionVideoViewState extends State<ReactionVideoView> {
                     child: Text(videoAPath == null ? '選擇視頻A (將在新頁面全螢幕預覽)' : '已選擇: ${videoAPath.split('/').last}'),
                 ),
                 const SizedBox(height: 16),
-                Text('2. 開啟攝像頭錄製你的反應'),
-                ElevatedButton(
-                  onPressed: isRecording ? null : () {
-                    context.read<ReactionVideoBloc>().add(StartWebcamRecording());
-                  },
-                  child: Text(isRecording ? '錄製中...' : (webcamPath == null ? '開始錄製' : '已錄製: $webcamPath')),
-                ),
+                Text('2. 點擊“開始錄製”錄製你的反應'),
                 const SizedBox(height: 16),
                 Text('3. 合成 Reaction Video'),
-                ElevatedButton(
-                  onPressed: (videoAPath != null && webcamPath != null && !isProcessing)
-                      ? () {
-                          // TODO: 調用FFmpeg合成
-                        }
-                      : null,
-                  child: Text(isProcessing ? '處理中...' : '合成 Reaction Video'),
-                ),
+                videoAPath != null
+                    ? ElevatedButton(
+                        onPressed: () async {
+                          // Open the folder containing videoAPath
+                          if (videoAPath != null) {
+                            final folder = Directory(videoAPath).parent;
+                            final uri = Uri.directory(folder.path);
+                            await launchUrl(uri);
+                          }
+                        },
+                        child: const Text('打開合成後影片'),
+                      )
+                    : ElevatedButton(
+                        onPressed: (videoAPath != null && webcamPath != null && !isProcessing)
+                            ? () {
+                                // TODO: 調用FFmpeg合成
+                              }
+                            : null,
+                        child: Text(isProcessing ? '處理中...' : '合成 Reaction Video'),
+                      ),
                 const SizedBox(height: 16),
                 if (outputPath != null) Text('已生成: $outputPath'),
                 const SizedBox(height: 16),

@@ -28,6 +28,8 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
   String? _recordedVideoPath;
   String? _mainFolderPath;
   CameraMacOSController? macOSController;
+  bool _isMerging = false;
+  String? _mergedVideoPath;
 
   @override
   void initState() {
@@ -113,6 +115,7 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
         print("CameraMacOSFile url: ${file?.url}");
         // File is already saved to _recordedVideoPath
         setState(() => _isRecording = false);
+        setState(() => _isMerging = true);
         // Merge videos using FFmpeg
         await _mergeVideos();
       } catch (e) {
@@ -122,49 +125,64 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
   }
 
   Future<void> _mergeVideos() async {
-    if (_mainFolderPath != null && _recordedVideoPath != null) {
+    if (_recordedVideoPath != null) {
       final outputPath = p.join(
-        _mainFolderPath!,
+        p.dirname(widget.videoPath),
         'reaction_video_${DateTime.now().millisecondsSinceEpoch}.mp4',
       );
       final ffmpegBloc = context.read<FfmpegBloc>();
+
+      // Target output width and height (e.g. 1280x720, 2:3 split)
+      const int outW = 1280;
+      const int outH = 720;
+      // Reaction video: 2/5 width, Origin video: 3/5 width
+      const int leftW = (outW * 2 ~/ 5);
+      const int rightW = (outW * 3 ~/ 5);
+
+        // FFmpeg filter: scale both videos to fit their target width and full height, pad to center if aspect ratio doesn't match, use light green background
+        // Light green: #90ee90 = 0x90ee90 = rgb(144,238,144)
+        final filter =
+          '[0:v]scale=w={leftW}:h={outH}:force_original_aspect_ratio=decrease,pad=w={leftW}:h={outH}:x=(ow-iw)/2:y=(oh-ih)/2:color=0x90ee90[left];'
+          '[1:v]scale=w={rightW}:h={outH}:force_original_aspect_ratio=decrease,pad=w={rightW}:h={outH}:x=(ow-iw)/2:y=(oh-ih)/2:color=0x90ee90[right];'
+          '[left][right]hstack=inputs=2[v]'
+          .replaceAll('{leftW}', leftW.toString())
+          .replaceAll('{rightW}', rightW.toString())
+          .replaceAll('{outH}', outH.toString());
+
       ffmpegBloc.add(
         CombineReactionVideo(
-          _recordedVideoPath!, // Use reaction video as first input for side-by-side
-          widget.videoPath,    // Original video as second input
+          _recordedVideoPath!,
+          widget.videoPath,
           outputPath,
           useOverlay: false,
+          customFilter: filter,
         ),
-      ); // hstack
+      );
 
-      // Listen for completion
       final subscription = ffmpegBloc.stream.listen((state) async {
         if (state is FfmpegSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Reaction video saved: ${p.basename(state.filePath)}',
-              ),
-              action: SnackBarAction(
-                label: 'Open Folder',
-                onPressed: () async {
-                  final folder = Directory(p.dirname(state.filePath));
-                  if (await folder.exists()) {
-                    await launchUrl(Uri.directory(folder.path));
-                  }
-                },
-              ),
-            ),
-          );
+          setState(() {
+            _isMerging = false;
+            _mergedVideoPath = state.filePath;
+          });
+          // Pop back to previous page and pass merged video path
+          if (mounted) {
+            Navigator.of(context).pop(state.filePath);
+          }
         } else if (state is FfmpegError) {
+          setState(() => _isMerging = false);
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text('Error: ${state.error}')));
         }
       });
 
-      // Cancel after some time or handle properly
-      Future.delayed(const Duration(seconds: 30), () => subscription.cancel());
+      Future.delayed(const Duration(seconds: 30), () {
+        subscription.cancel();
+        if (mounted && _isMerging) {
+          setState(() => _isMerging = false);
+        }
+      });
     }
   }
 
@@ -183,91 +201,136 @@ class _VideoPreviewPageState extends State<VideoPreviewPage> {
   final GlobalKey cameraKey = GlobalKey(debugLabel: "cameraKey");
 
   Widget _body() {
-    return Column(
-      children: [
-        Expanded(
-          child: _controller != null && _controller!.value.isInitialized
-              ? GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      if (_controller!.value.isPlaying) {
-                        _controller!.pause();
-                      } else {
-                        _controller!.play();
-                      }
-                    });
-                  },
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: AspectRatio(
-                          aspectRatio: _controller!.value.aspectRatio,
-                          child: VideoPlayer(_controller!),
-                        ),
-                      ),
-                      if (!_controller!.value.isPlaying && !_isRecording)
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle,
-                            size: 64,
-                            color: Colors.white70,
-                          ),
-                        ),
-
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: SizedBox(
-                            width: 100,
-                            height: 75,
-                            child: CameraMacOSView(
-                              key: cameraKey,
-                              fit: BoxFit.fill,
-                              cameraMode: CameraMacOSMode.video,
-                              onCameraInizialized:
-                                  (CameraMacOSController controller) {
-                                    print("onCameraInizialized===");
-                                    setState(() {
-                                      macOSController = controller;
-                                    });
-                                  },
+    return AbsorbPointer(
+      absorbing: _isMerging,
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              Expanded(
+                child: _controller != null && _controller!.value.isInitialized
+                    ? GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (_controller!.value.isPlaying) {
+                              _controller!.pause();
+                            } else {
+                              _controller!.play();
+                            }
+                          });
+                        },
+                        child: Stack(
+                          children: [
+                            Center(
+                              child: AspectRatio(
+                                aspectRatio: _controller!.value.aspectRatio,
+                                child: VideoPlayer(_controller!),
+                              ),
                             ),
-                          ),
+                            if (!_controller!.value.isPlaying && !_isRecording)
+                              const Center(
+                                child: Icon(
+                                  Icons.play_circle,
+                                  size: 64,
+                                  color: Colors.white70,
+                                ),
+                              ),
+
+                              Positioned(
+                                top: 10,
+                                right: 10,
+                                child: SizedBox(
+                                  width: 100,
+                                  height: 75,
+                                  child: CameraMacOSView(
+                                    key: cameraKey,
+                                    fit: BoxFit.fill,
+                                    cameraMode: CameraMacOSMode.video,
+                                    onCameraInizialized:
+                                        (CameraMacOSController controller) {
+                                          print("onCameraInizialized===");
+                                          setState(() {
+                                            macOSController = controller;
+                                          });
+                                        },
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
+                      )
+                    : const Center(child: CircularProgressIndicator()),
+              ),
+              if (macOSController == null)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 12),
+                      Text('Initializing camera...'),
                     ],
                   ),
-                )
-              : const Center(child: CircularProgressIndicator()),
-        ),
-        if (macOSController == null)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 12),
-                Text('Initializing camera...'),
-              ],
+                ),
+              if (macOSController != null && !_isRecording)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('點擊下方開始Reaction。'),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (_controller != null && !_isMerging) ? _toggleReaction : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRecording ? Colors.red : Colors.green,
+                          minimumSize: const Size(double.infinity, 50),
+                        ),
+                        child: Text(_isRecording ? '完成錄製' : '開始錄製', style: TextStyle(color: Colors.white),),
+                      ),
+                    ),
+                    if (_mergedVideoPath != null)
+                      SizedBox(width: 16),
+                    if (_mergedVideoPath != null)
+                      ElevatedButton(
+                        onPressed: () async {
+                          final folder = Directory(p.dirname(_mergedVideoPath!));
+                          if (await folder.exists()) {
+                            await launchUrl(Uri.directory(folder.path));
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(150, 50),
+                        ),
+                        child: const Text('Open Merged Video'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_isMerging)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text(
+                      '合成影片中，請稍候...',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        if (macOSController != null && !_isRecording)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text('Camera ready. You can start recording.'),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ElevatedButton(
-            onPressed: (_controller != null) ? _toggleReaction : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isRecording ? Colors.red : Colors.green,
-              minimumSize: const Size(double.infinity, 50),
-            ),
-            child: Text(_isRecording ? 'End Reaction' : 'Start Reaction'),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

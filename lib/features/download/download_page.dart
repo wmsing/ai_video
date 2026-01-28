@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'blocs/download_bloc.dart';
 import 'blocs/download_event.dart';
 import 'blocs/download_state.dart';
+import 'widgets/download_history_list.dart';
+import '../../shared/widgets/main_folder_app_bar.dart';
 
 class DownloadPage extends StatelessWidget {
   const DownloadPage({super.key});
@@ -110,16 +112,10 @@ class _DownloadViewState extends State<DownloadView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Download'),
-        actions: [
-          if (_mainFolderPath != null)
-            IconButton(
-              icon: const Icon(Icons.folder_open),
-              onPressed: _openMainFolder,
-              tooltip: '打開主資料夾',
-            )
-        ],
+      appBar: MainFolderAppBar(
+        title: 'Download',
+        mainFolderPath: _mainFolderPath,
+        onOpenMainFolder: _openMainFolder,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -151,14 +147,10 @@ class _DownloadViewState extends State<DownloadView> {
                 if (state is DownloadError)
                   Text('Error: ${state.error}'),
                 // History list
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _downloadHistory.length,
-                    itemBuilder: (context, index) => ListTile(
-                      title: SelectableText(_downloadHistory[index]),
-                    ),
+                  Expanded(
+                    child: DownloadHistoryList(history: _downloadHistory),
                   ),
-                ),
+
               ],
             );
           },

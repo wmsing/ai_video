@@ -2,6 +2,43 @@
 
 一個整合影片下載、字幕提取與壓制功能的 Flutter 應用程式，支援 macOS 和 Web 部署。
 
+# BLoC
+-  UI 和邏輯分離
+
+## Step
+1. 設計 UI
+先建立 UI 畫面（如 DownloadPage 和 DownloadView），包含輸入欄位、按鈕、進度條等元件。
+
+2. 定義事件（Event）
+在 blocs/download_event.dart 定義所有可能的事件，例如：
+StartDownload：用戶點擊下載時觸發。
+
+3. 定義狀態（State）
+在 blocs/download_state.dart 定義所有 UI 可能呈現的狀態，例如：
+
+DownloadInitial：初始狀態
+DownloadLoading：下載中（可帶進度）
+DownloadSuccess：下載完成
+DownloadError：下載失敗
+
+4. 實作 BLoC
+在 blocs/download_bloc.dart：
+
+監聽事件（如 StartDownload）
+執行下載邏輯
+根據進度或結果發出不同狀態
+
+5. UI 綁定 BLoC
+在 UI（如 DownloadPage）用 BlocProvider 提供 BLoC 實例，並用 BlocBuilder 監聽狀態變化，根據不同狀態更新畫面（顯示進度、錯誤、成功等）。
+
+6. 觸發事件
+UI 互動（如按下「下載」按鈕）時，呼叫 context.read<DownloadBloc>().add(StartDownload(...)) 來觸發事件。
+
+## 總結流程：
+建 UI → 定義 Event → 定義 State → 實作 BLoC →
+UI 用 BlocProvider/BlocBuilder 綁定 →
+UI 互動時 add Event
+
 ## CI/CD
 
 This project uses GitHub Actions for continuous integration and deployment.

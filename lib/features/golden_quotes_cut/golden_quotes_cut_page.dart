@@ -23,6 +23,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
   bool _isProcessing = false;
   String _status = '';
   String _terminalOutput = '';
+  String? _outputFolderPath;
   final TextEditingController _jsonController = TextEditingController();
 
   @override
@@ -194,6 +195,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
       _isProcessing = true;
       _status = '正在生成金句影片... 請稍候';
       _terminalOutput = '';
+      _outputFolderPath = null;
     });
 
     try {
@@ -222,9 +224,21 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
         '-c', _selectedJsonPath!,
       ]);
 
+      String? outputFolder;
+      if (result.exitCode == 0) {
+        // Try to find the output file path from stdout, fallback to video dir
+        final outputPattern = RegExp(r'Output file: (.+\.(mp4|mov))', caseSensitive: false);
+        final match = outputPattern.firstMatch(result.stdout.toString());
+        if (match != null) {
+          outputFolder = File(match.group(1)!).parent.path;
+        } else if (_selectedVideoPath != null) {
+          outputFolder = File(_selectedVideoPath!).parent.path;
+        }
+      }
       setState(() {
         _status = result.exitCode == 0 ? '金句影片生成完成！' : '生成出錯';
         _terminalOutput = result.stdout + '\n' + result.stderr;
+        _outputFolderPath = outputFolder;
       });
     } catch (e) {
       setState(() {
@@ -336,6 +350,21 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
             ),
             const SizedBox(height: 16),
             Text('狀態: $_status', style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (_status == '金句影片生成完成！' && _outputFolderPath != null) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  // Open the folder in Finder (macOS)
+                  await Process.run('open', [_outputFolderPath!]);
+                },
+                icon: const Icon(Icons.folder_open),
+                label: const Text('打開輸出資料夾'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade50,
+                  foregroundColor: Colors.blue.shade900,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text('終端輸出:'),
             Expanded(
@@ -534,17 +563,26 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
   }
 
   void _addItem() {
+    String start = '00:00:00';
+    String end = '00:00:05';
+    if (items.isNotEmpty) {
+      final lastEnd = controllers.last['end']?.text;
+      if (lastEnd != null && lastEnd.isNotEmpty) {
+        start = lastEnd;
+        end = lastEnd;
+      }
+    }
     setState(() {
       items.add({
         'title': '',
-        'start': '00:00:00',
-        'end': '00:00:05',
+        'start': start,
+        'end': end,
       });
       controllers.add({
         'title': TextEditingController(text: ''),
         'video_path': TextEditingController(text: ''),
-        'start': TextEditingController(text: '00:00:00'),
-        'end': TextEditingController(text: '00:00:05'),
+        'start': TextEditingController(text: start),
+        'end': TextEditingController(text: end),
         'font_size': TextEditingController(text: ''),
       });
       keys.add(UniqueKey());
@@ -737,131 +775,145 @@ class _StructuredJsonDialogState extends State<_StructuredJsonDialog> {
           focusNode: FocusNode(),
           autofocus: true,
           onKeyEvent: (KeyEvent event) {
-            // if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
-            //   if (_videoController != null) {
-            //     setState(() {
-            //       _videoController!.value.isPlaying
-            //           ? _videoController!.pause()
-            //           : _videoController!.play();
-            //     });
-            //   }
-            // }
+            // ...existing code...
           },
           child: Row(
           children: [
             Expanded(
               flex: 1,
-              child: ReorderableListView(
-                onReorder: _onReorder,
-                children: List.generate(items.length, (index) {
-                  final itemControllers = controllers[index];
-                  return Card(
-                    key: keys[index],
-                    margin: const EdgeInsets.only(bottom: 16),
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.drag_handle, color: Colors.grey),
-                                  const SizedBox(width: 8),
-                                  Text('金句 #${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _removeItem(index),
-                                tooltip: '刪除此項',
-                              ),
-                            ],
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ReorderableListView(
+                      onReorder: _onReorder,
+                      children: List.generate(items.length, (index) {
+                        final itemControllers = controllers[index];
+                        return Card(
+                          key: keys[index],
+                          margin: const EdgeInsets.only(bottom: 16),
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.drag_handle, color: Colors.grey),
+                                        const SizedBox(width: 8),
+                                        Text('金句 #${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () => _removeItem(index),
+                                      tooltip: '刪除此項',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: itemControllers['title'],
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(labelText: '標題 (Title)', border: OutlineInputBorder()),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: itemControllers['start'],
+                                        focusNode: startFocusNodes[index],
+                                        decoration: const InputDecoration(labelText: '開始時間 (Start)', hintText: '00:00:00'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: () => _setStartTime(index),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.tealAccent.shade100,
+                                      ),
+                                      child: const Text('套用時間'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: itemControllers['end'],
+                                        focusNode: endFocusNodes[index],
+                                        decoration: const InputDecoration(labelText: '結束時間 (End)', hintText: '00:00:00'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: () => _setEndTime(index),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.redAccent.shade100,
+                                      ),
+                                      child: const Text('套用時間'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: itemControllers['video_path'],
+                                        decoration: const InputDecoration(
+                                          labelText: '影片路徑 (選填)',
+                                          hintText: 'input/...',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      onPressed: () => _pickItemVideo(index),
+                                      icon: const Icon(Icons.file_open),
+                                      tooltip: '選擇影片檔',
+                                    ),
+                                    const SizedBox(width: 8),
+                                    SizedBox(
+                                      width: 80,
+                                      child: TextField(
+                                        controller: itemControllers['font_size'],
+                                        decoration: const InputDecoration(
+                                          labelText: '字體',
+                                          hintText: '70',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: itemControllers['title'],
-                            maxLines: 2,
-                            decoration: const InputDecoration(labelText: '標題 (Title)', border: OutlineInputBorder()),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: itemControllers['start'],
-                                  focusNode: startFocusNodes[index],
-                                  decoration: const InputDecoration(labelText: '開始時間 (Start)', hintText: '00:00:00'),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: () => _setStartTime(index),
-                                  style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.tealAccent.shade100,
-                                ),
-                                child: const Text('套用時間'),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: itemControllers['end'],
-                                  focusNode: endFocusNodes[index],
-                                  decoration: const InputDecoration(labelText: '結束時間 (End)', hintText: '00:00:00'),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: () => _setEndTime(index),
-                                style: ElevatedButton.styleFrom(
-                                                                  backgroundColor: Colors.redAccent.shade100,
-                                ),
-                                child: const Text('套用時間'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: itemControllers['video_path'],
-                                  decoration: const InputDecoration(
-                                    labelText: '影片路徑 (選填)',
-                                    hintText: 'input/...',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                onPressed: () => _pickItemVideo(index),
-                                icon: const Icon(Icons.file_open),
-                                tooltip: '選擇影片檔',
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 80,
-                                child: TextField(
-                                  controller: itemControllers['font_size'],
-                                  decoration: const InputDecoration(
-                                    labelText: '字體',
-                                    hintText: '70',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        );
+                      }),
+                    ),
+                  ),
+                  // Add button at the end of the list
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: ElevatedButton.icon(
+                        onPressed: _addItem,
+                        icon: const Icon(Icons.add),
+                        label: const Text('新增金句'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade100,
+                          foregroundColor: Colors.green.shade900,
+                        ),
                       ),
                     ),
-                  );
-                }),
+                  ),
+                ],
               ),
             ),
             if (_showVideoPlayer && _videoController != null) ...[

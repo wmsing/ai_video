@@ -16,6 +16,7 @@ class GoldenQuotesCutPage extends StatefulWidget {
 }
 
 class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
+  String _aspectRatio = '16:9';
   String? _selectedVideoPath;
   String? _selectedJsonPath;
   String? _projectRoot;
@@ -222,6 +223,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
         scriptPath,
         '-i', _selectedVideoPath!,
         '-c', _selectedJsonPath!,
+        '--aspect', _aspectRatio,
       ]);
 
       String? outputFolder;
@@ -268,6 +270,27 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
               onPressed: _pickVideo,
               icon: const Icon(Icons.video_library),
               label: const Text('選擇影片 (MP4/MOV)'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text('影片比例：', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _aspectRatio,
+                  items: const [
+                    DropdownMenuItem(value: '16:9', child: Text('16:9')),
+                    DropdownMenuItem(value: '9:16', child: Text('9:16')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _aspectRatio = value;
+                      });
+                    }
+                  },
+                ),
+              ],
             ),
             if (_selectedVideoPath != null) ...[
               const SizedBox(height: 8),
@@ -375,7 +398,7 @@ class _GoldenQuotesCutPageState extends State<GoldenQuotesCutPage> {
                   border: Border.all(color: Colors.grey.shade300),
                 ),
                 child: SingleChildScrollView(
-                  child: Text(
+                  child: SelectableText(
                     _terminalOutput,
                     style: const TextStyle(fontFamily: 'Courier', fontSize: 10),
                   ),
